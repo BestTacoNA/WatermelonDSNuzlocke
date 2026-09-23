@@ -51,10 +51,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import me.magnum.melonds.R
 import me.magnum.melonds.domain.model.rom.Rom
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.ui.romdetails.model.RomDetailsTab
 import me.magnum.melonds.ui.romlist.composables.DsBoxArtAspectRatio
 import me.magnum.melonds.ui.romlist.composables.RomMiniIcon
 import me.magnum.melonds.ui.romlist.composables.ScanlinesOverlay
+import me.magnum.melonds.ui.romlist.composables.WatermelonRomArt
 import me.magnum.melonds.ui.romlist.composables.formatHoursLabel
 import me.magnum.melonds.ui.romlist.composables.romDisplayName
 import me.magnum.melonds.ui.romlist.composables.romGradient
@@ -173,7 +175,15 @@ private fun HeroCover(
             .clip(RoundedCornerShape(12.dp))
             .background(romGradient(romDisplayName(rom))),
     ) {
-        if (boxArtUrl != null) {
+        if (rom.config.iconSource != RomIconSource.DEFAULT) {
+            WatermelonRomArt(
+                rom = rom,
+                boxArtUrl = null,
+                raCoverUrl = raCoverUrl,
+                initialsFontSize = initialsSize,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (boxArtUrl != null) {
             AsyncImage(
                 model = boxArtUrl,
                 contentDescription = null,

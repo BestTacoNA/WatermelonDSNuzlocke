@@ -61,6 +61,8 @@
         <item>6</item>
         <item>7</item>
         <item>8</item>
+        <item>12</item>
+        <item>16</item>
     </string-array>
 
     <string-array name="video_filtering_values">
@@ -148,6 +150,20 @@
         <item>0.75</item>
         <item>0.5</item>
         <item>0.25</item>
+    </string-array>
+
+    <string-array name="frameskip_mode_values">
+        <item>off</item>
+        <item>manual</item>
+        <item>auto</item>
+    </string-array>
+
+    <string-array name="frameskip_manual_value_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
     </string-array>
 
     <string-array name="dldi_sd_card_image_size_values">

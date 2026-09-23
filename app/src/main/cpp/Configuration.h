@@ -5,7 +5,6 @@
 #include <memory>
 #include "renderer/Renderer.h"
 #include "renderer/VulkanFilterMode.h"
-#include "VulkanPipelineProfile.h"
 
 namespace MelonDSAndroid
 {
@@ -48,9 +47,6 @@ struct VulkanRenderSettings : public RenderSettings
     bool threadedRendering;
     bool betterPolygons;
     int scale;
-    bool useSimplePipeline = true;
-    melonDS::VulkanPipelineProfile pipelineProfile =
-        melonDS::VulkanPipelineProfile::Compatibility;
     bool rendererDebugToolsEnabled;
     bool rendererDebugBgObjEnabled;
     bool rendererDebugLatchTraceEnabled;
@@ -66,6 +62,8 @@ struct VulkanRenderSettings : public RenderSettings
 struct AudioSettings
 {
     bool soundEnabled;
+
+    bool muteOnFastForward;
     int volume;
     int audioInterpolation;
     int audioBitrate;
@@ -108,6 +106,11 @@ typedef struct
     char* internalFilesDir;
     float fastForwardSpeedMultiplier;
     float frameLimitSpeedMultiplier;
+
+    int frameskipMode;
+    int frameskipManualValue;
+
+    bool vulkanDrsEnabled;
     bool showBootScreen;
     bool useJit;
     bool hgEngineFixEnabled;

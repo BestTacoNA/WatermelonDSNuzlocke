@@ -1,6 +1,9 @@
 #include <jni.h>
 #include <cstdlib>
 #include <cstring>
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
 #include "MelonDSAndroidConfiguration.h"
 #include "renderer/Renderer.h"
 
@@ -206,6 +209,9 @@ MelonDSAndroid::EmulatorConfiguration MelonDSAndroidConfiguration::buildEmulator
     jstring internalFilesDir = (jstring) env->GetObjectField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "internalDirectory", "Ljava/lang/String;"));
     jfloat fastForwardMaxSpeed = env->GetFloatField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "fastForwardSpeedMultiplier", "F"));
     jfloat frameLimitSpeed = env->GetFloatField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "frameLimitSpeedMultiplier", "F"));
+    jint frameskipMode = env->GetIntField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "frameskipMode", "I"));
+    jint frameskipManualValue = env->GetIntField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "frameskipManualValue", "I"));
+    jboolean vulkanDrsEnabled = env->GetBooleanField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "vulkanDrsEnabled", "Z"));
     jboolean enableRewind = env->GetBooleanField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "rewindEnabled", "Z"));
     jint rewindPeriodSeconds = env->GetIntField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "rewindPeriodSeconds", "I"));
     jint rewindWindowSeconds = env->GetIntField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "rewindWindowSeconds", "I"));
@@ -214,6 +220,7 @@ MelonDSAndroid::EmulatorConfiguration MelonDSAndroidConfiguration::buildEmulator
     jobject consoleTypeEnum = env->GetObjectField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "consoleType", "Lme/magnum/melonds/domain/model/ConsoleType;"));
     jint consoleType = env->GetIntField(consoleTypeEnum, env->GetFieldID(consoleTypeEnumClass, "consoleType", "I"));
     jboolean soundEnabled = env->GetBooleanField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "soundEnabled", "Z"));
+    jboolean muteOnFastForward = env->GetBooleanField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "muteOnFastForward", "Z"));
     jint volume = env->GetIntField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "volume", "I"));
     jobject audioInterpolationEnum = env->GetObjectField(emulatorConfiguration, env->GetFieldID(emulatorConfigurationClass, "audioInterpolation", "Lme/magnum/melonds/domain/model/AudioInterpolation;"));
     jint audioInterpolation = env->GetIntField(audioInterpolationEnum, env->GetFieldID(audioInterpolationEnumClass, "interpolationValue", "I"));
@@ -253,12 +260,16 @@ MelonDSAndroid::EmulatorConfiguration MelonDSAndroidConfiguration::buildEmulator
     finalEmulatorConfiguration.internalFilesDir = internalDir;
     finalEmulatorConfiguration.fastForwardSpeedMultiplier = fastForwardMaxSpeed;
     finalEmulatorConfiguration.frameLimitSpeedMultiplier = frameLimitSpeed;
+    finalEmulatorConfiguration.frameskipMode = frameskipMode;
+    finalEmulatorConfiguration.frameskipManualValue = frameskipManualValue;
+    finalEmulatorConfiguration.vulkanDrsEnabled = vulkanDrsEnabled;
     finalEmulatorConfiguration.showBootScreen = showBootScreen;
     finalEmulatorConfiguration.useJit = useJit;
     finalEmulatorConfiguration.hgEngineFixEnabled = hgEngineFixEnabled;
     finalEmulatorConfiguration.consoleType = consoleType;
     finalEmulatorConfiguration.audioSettings = MelonDSAndroid::AudioSettings {
         .soundEnabled = (bool) soundEnabled,
+        .muteOnFastForward = (bool) muteOnFastForward,
         .volume = volume,
         .audioInterpolation = audioInterpolation,
         .audioBitrate = audioBitrate,
@@ -329,16 +340,6 @@ std::unique_ptr<MelonDSAndroid::RenderSettings> MelonDSAndroidConfiguration::bui
     jclass renderSettingsClass = env->GetObjectClass(renderSettings);
     jmethodID getResolutionScalingMethod = env->GetMethodID(renderSettingsClass, "getResolutionScaling", "()I");
     jboolean threadedRendering = env->GetBooleanField(renderSettings, env->GetFieldID(renderSettingsClass, "threadedRendering", "Z"));
-    jobject vulkanPipelineProfileObject = getOptionalObjectField(
-        env,
-        renderSettings,
-        renderSettingsClass,
-        "vulkanPipelineProfile",
-        "Lme/magnum/melonds/domain/model/VulkanPipelineProfile;");
-    jint vulkanPipelineProfileOrdinal = 0;
-    (void)getEnumOrdinal(env, vulkanPipelineProfileObject, &vulkanPipelineProfileOrdinal);
-    if (vulkanPipelineProfileObject != nullptr)
-        env->DeleteLocalRef(vulkanPipelineProfileObject);
     jboolean rendererDebugToolsEnabled = env->GetBooleanField(renderSettings, env->GetFieldID(renderSettingsClass, "rendererDebugToolsEnabled", "Z"));
     jboolean rendererDebugBgObjEnabled = env->GetBooleanField(renderSettings, env->GetFieldID(renderSettingsClass, "rendererDebugBgObjEnabled", "Z"));
     jboolean rendererDebugLatchTraceEnabled = env->GetBooleanField(renderSettings, env->GetFieldID(renderSettingsClass, "rendererDebugLatchTraceEnabled", "Z"));
@@ -354,6 +355,19 @@ std::unique_ptr<MelonDSAndroid::RenderSettings> MelonDSAndroidConfiguration::bui
     if (videoFilteringObject != nullptr)
         env->DeleteLocalRef(videoFilteringObject);
     jint internalResolutionScaling = env->CallIntMethod(renderSettings, getResolutionScalingMethod);
+
+    bool vulkanBetterPolygons = true;
+    (void)internalResolutionScaling;
+    if (const char* betterPolyEnv = std::getenv("MELON_BETTER_POLY"))
+        vulkanBetterPolygons = betterPolyEnv[0] == '1';
+#ifdef __ANDROID__
+    else
+    {
+        char vbp[PROP_VALUE_MAX] = {};
+        if (__system_property_get("debug.melonds.better_poly", vbp) > 0)
+            vulkanBetterPolygons = vbp[0] == '1';
+    }
+#endif
 
     std::unique_ptr<MelonDSAndroid::RenderSettings> settings;
     if (renderer == MelonDSAndroid::Renderer::OpenGl)
@@ -379,12 +393,8 @@ std::unique_ptr<MelonDSAndroid::RenderSettings> MelonDSAndroidConfiguration::bui
         settings = std::make_unique<MelonDSAndroid::VulkanRenderSettings>(
             MelonDSAndroid::VulkanRenderSettings {
                 .threadedRendering = true,
-                .betterPolygons = true,
+                .betterPolygons = vulkanBetterPolygons,
                 .scale = internalResolutionScaling,
-                .useSimplePipeline = true,
-                .pipelineProfile = vulkanPipelineProfileOrdinal == 1
-                    ? melonDS::VulkanPipelineProfile::FastPath
-                    : melonDS::VulkanPipelineProfile::Compatibility,
                 .rendererDebugToolsEnabled = rendererDebugToolsEnabled != 0,
                 .rendererDebugBgObjEnabled = rendererDebugBgObjEnabled != 0,
                 .rendererDebugLatchTraceEnabled = rendererDebugLatchTraceEnabled != 0,

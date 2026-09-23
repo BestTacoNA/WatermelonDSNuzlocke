@@ -91,7 +91,7 @@ internal class DebugCommandReceiver : BroadcastReceiver() {
 
     private fun handleSetInternalResolution(entryPoint: DebugCommandEntryPoint, intent: Intent) {
         val scale = intent.firstIntExtra(EXTRA_SCALE, EXTRA_IR, EXTRA_VALUE)
-        require(scale in 1..8) { "Unsupported internal resolution=$scale" }
+        require(scale in 1..8 || scale == 12 || scale == 16) { "Unsupported internal resolution=$scale" }
         entryPoint.sharedPreferences().edit(commit = true) {
             putString(KEY_VIDEO_INTERNAL_RESOLUTION, scale.toString())
         }
@@ -184,7 +184,7 @@ internal class DebugCommandReceiver : BroadcastReceiver() {
         val forceDynamicIndexingOff = intent.firstBooleanExtra(EXTRA_DYNAMIC_INDEXING_OFF)
             ?: intent.firstBooleanExtra(EXTRA_DYNAMIC_INDEXING)?.not()
             ?: false
-        MelonDSAndroidInterface.setVulkanCompatibilityOverrides(
+        MelonDSAndroidInterface.setVulkanCapabilityOverrides(
             disableTimelineSemaphores = forceTimelineOff,
             disableDynamicTextureIndexing = forceDynamicIndexingOff,
         )

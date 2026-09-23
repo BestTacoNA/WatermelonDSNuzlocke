@@ -17,6 +17,11 @@ data class EmulatorConfiguration(
         val internalDirectory: String,
         val fastForwardSpeedMultiplier: Float,
         val frameLimitSpeedMultiplier: Float,
+
+        val frameskipMode: Int,
+        val frameskipManualValue: Int,
+
+        val vulkanDrsEnabled: Boolean,
         val rewindEnabled: Boolean,
         val rewindPeriodSeconds: Int,
         val rewindWindowSeconds: Int,
@@ -32,5 +37,7 @@ data class EmulatorConfiguration(
         val firmwareConfiguration: FirmwareConfiguration,
         val rendererConfiguration: RendererConfiguration,
         val dldiSdCardConfiguration: DldiSdCardConfiguration,
-        val dsiWareAutoloadTitleId: Long = 0L
+        val dsiWareAutoloadTitleId: Long = 0L,
+
+        val muteOnFastForward: Boolean = false,
 )

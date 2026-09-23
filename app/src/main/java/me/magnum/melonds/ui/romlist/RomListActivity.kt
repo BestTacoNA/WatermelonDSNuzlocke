@@ -41,6 +41,7 @@ import me.magnum.melonds.domain.model.SortingMode
 import me.magnum.melonds.domain.model.Version
 import me.magnum.melonds.domain.model.appupdate.AppUpdate
 import me.magnum.melonds.domain.model.rom.Rom
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.ui.common.rom.EmulatorLaunchValidatorDelegate
 import me.magnum.melonds.ui.dsiwaremanager.DSiWareManagerActivity
 import me.magnum.melonds.ui.emulator.EmulatorActivity
@@ -217,14 +218,20 @@ class RomListActivity : AppCompatActivity() {
         super.onStart()
         externalInfoController.attach()
         externalInfoController.setContent {
-            val rom = highlightedRom.collectAsState().value
+            val highlighted = highlightedRom.collectAsState().value
+            val browser = viewModel.browserState.collectAsState().value
+            val rom = browser.entries.firstNotNullOfOrNull {
+                (it as? RomBrowserEntry.RomItem)?.rom?.takeIf { current -> current.uri == highlighted?.uri }
+            } ?: browser.continuePlaying.firstOrNull { it.uri == highlighted?.uri } ?: highlighted
             if (rom != null) {
                 val boxArtByUri = viewModel.boxArtByUri.collectAsState().value
-                val raCoverByHash = viewModel.raCoverByHash.collectAsState().value
+                val raCoverByUri = viewModel.raCoverByUri.collectAsState().value
                 me.magnum.melonds.ui.common.ExternalLibraryGameInfo(
                     rom = rom,
-                    boxArtUrl = boxArtByUri[rom.uri.toString()]?.takeIf { it.isNotEmpty() },
-                    raCoverUrl = raCoverByHash[rom.retroAchievementsHash],
+                    boxArtUrl = boxArtByUri[rom.uri.toString()]?.takeIf {
+                        it.isNotEmpty() && rom.config.iconSource == RomIconSource.DEFAULT
+                    },
+                    raCoverUrl = raCoverByUri[rom.uri.toString()],
                 )
             } else {
                 me.magnum.melonds.ui.common.ExternalIdleInfo()

@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -53,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import me.magnum.melonds.R
 import me.magnum.melonds.ui.common.GamepadHint
@@ -121,7 +123,10 @@ fun RewindOverlay(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.line))
 
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
             if (states.isEmpty()) {
                 Text(
                     text = stringResource(R.string.rewind),
@@ -130,6 +135,10 @@ fun RewindOverlay(
                     fontSize = 12.sp,
                 )
             } else {
+                val cardWidth = minOf(
+                    (maxWidth - 48.dp - 24.dp) / 3,
+                    (maxHeight - 24.dp) * (2f / 3f),
+                ).coerceAtLeast(1.dp)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
@@ -141,6 +150,7 @@ fun RewindOverlay(
                             window = window,
                             state = state,
                             index = index,
+                            width = cardWidth,
                             focusRequester = if (index == 0) firstFocusRequester else null,
                             onClick = { onStateSelected(state) },
                         )
@@ -167,6 +177,7 @@ private fun RewindStateCard(
     window: RewindWindow,
     state: RewindSaveState,
     index: Int,
+    width: Dp,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
@@ -192,8 +203,8 @@ private fun RewindStateCard(
     ) {
         Box(
             modifier = Modifier
-                .width(118.dp)
-                .aspectRatio(4f / 3f)
+                .width(width)
+                .aspectRatio(2f / 3f)
                 .alpha(if (isFocused) 1f else baseAlpha)
                 .clip(shape)
                 .background(colors.surface2)
@@ -211,7 +222,7 @@ private fun RewindStateCard(
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

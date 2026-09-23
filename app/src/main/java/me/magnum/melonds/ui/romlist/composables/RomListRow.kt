@@ -263,6 +263,7 @@ fun FolderListRow(
 }
 
 private fun buildSubtitle(rom: Rom, context: android.content.Context): String {
+    rom.unsupportedReason?.let { return it }
     if (rom.developerName.isNotBlank()) {
         return rom.developerName
     }

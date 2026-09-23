@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.magnum.melonds.common.Permission
 import me.magnum.melonds.common.UriPermissionManager
@@ -19,6 +21,7 @@ import me.magnum.melonds.domain.model.rom.config.RomInputMode
 import me.magnum.melonds.domain.model.rom.config.RomGbaSlotConfig
 import me.magnum.melonds.domain.repositories.RomsRepository
 import me.magnum.melonds.domain.repositories.SettingsRepository
+import me.magnum.melonds.domain.repositories.RetroAchievementsRepository
 import me.magnum.melonds.impl.RomIconProvider
 import me.magnum.melonds.parcelables.RomParcelable
 import me.magnum.melonds.ui.romdetails.model.RomConfigUiState
@@ -32,6 +35,7 @@ class RomDetailsViewModel @Inject constructor(
     private val romDetailsUiMapper: RomDetailsUiMapper,
     private val romsRepository: RomsRepository,
     private val settingsRepository: SettingsRepository,
+    private val retroAchievementsRepository: RetroAchievementsRepository,
     private val romIconProvider: RomIconProvider,
     private val uriPermissionManager: UriPermissionManager,
     savedStateHandle: SavedStateHandle,
@@ -51,6 +55,14 @@ class RomDetailsViewModel @Inject constructor(
     val rom = _rom.asStateFlow()
 
     private val _romConfig = MutableStateFlow(_rom.value.config)
+
+    val raCoverUrl = combine(
+        _rom,
+        retroAchievementsRepository.observeRomCoverIcons(),
+        settingsRepository.observeRaCoverEnabled(),
+    ) { rom, covers, enabled ->
+        covers[rom.retroAchievementsHash].takeIf { rom.config.iconSource.usesRetroAchievements(enabled) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
         refreshRom()
@@ -152,6 +164,7 @@ class RomDetailsViewModel @Inject constructor(
                 }
             }
             is RomConfigUpdateEvent.CustomNameUpdate -> currentRomConfig.copy(customName = event.customName)
+            is RomConfigUpdateEvent.IconSourceUpdate -> currentRomConfig.copy(iconSource = event.iconSource)
             is RomConfigUpdateEvent.VideoRendererUpdate -> {
                 val targetRenderer = event.videoRenderer
                 val targetFiltering = currentRomConfig.videoFiltering

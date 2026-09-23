@@ -6,37 +6,31 @@ import me.magnum.melonds.R
 import java.io.File
 
 object AdrenoVulkanDriverSupport {
+    private val gpuModel: String? by lazy {
+        runCatching {
+            File("/sys/class/kgsl/kgsl-3d0/gpu_model").bufferedReader().use { it.readLine() }
+        }.getOrNull()
+    }
+
     fun isSupported(context: Context): Boolean {
-        return context.resources.getBoolean(R.bool.adrenotools_enabled) &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
-            Build.SUPPORTED_64_BIT_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) } &&
-            isAdrenoDevice()
+        return isLoaderAvailable(
+            context.resources.getBoolean(R.bool.adrenotools_enabled),
+            Build.VERSION.SDK_INT,
+            Build.SUPPORTED_64_BIT_ABIS,
+        ) && isAdrenoGpu(gpuModel)
     }
 
-    fun isAdrenoDevice(): Boolean {
-        if (readGpuModel().contains("adreno", ignoreCase = true)) {
-            return true
-        }
-
-        if (File("/sys/class/kgsl/kgsl-3d0").exists()) {
-            return true
-        }
-
-        return Build.HARDWARE.equals("qcom", ignoreCase = true)
+    internal fun isAdrenoGpu(gpuModel: String?): Boolean {
+        return gpuModel?.trim()?.startsWith("Adreno", ignoreCase = true) == true
     }
 
-    private fun readGpuModel(): String {
-        return listOf(
-            "/sys/class/kgsl/kgsl-3d0/gpu_model",
-            "/sys/class/kgsl/kgsl-3d0/gpu_model_name",
-            "/proc/gpuinfo",
-        ).firstNotNullOfOrNull { path ->
-            runCatching {
-                File(path)
-                    .takeIf { it.isFile }
-                    ?.readText()
-                    ?.takeIf { it.isNotBlank() }
-            }.getOrNull()
-        }.orEmpty()
+    internal fun isLoaderAvailable(
+        buildEnabled: Boolean,
+        sdkInt: Int,
+        supported64BitAbis: Array<String>,
+    ): Boolean {
+        return buildEnabled &&
+            sdkInt >= Build.VERSION_CODES.P &&
+            supported64BitAbis.any { it.equals("arm64-v8a", ignoreCase = true) }
     }
 }

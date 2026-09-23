@@ -42,7 +42,9 @@ namespace MelonDSAndroid
 {
     namespace
     {
-        bool fastForwardActive = false;
+        std::atomic_bool fastForwardActive = false;
+
+        std::atomic_bool muteOnFastForward = false;
         std::atomic_bool rendererDebugToolsEnabled = false;
         std::atomic_bool rendererDebugBgObjEnabled = false;
         std::atomic_bool rendererDebugLatchTraceEnabled = false;
@@ -444,6 +446,35 @@ namespace MelonDSAndroid
         rendererDebugToolsEnabled.store(ResolveRendererDebugToolsEnabled(*currentConfiguration), std::memory_order_relaxed);
         rendererDebugBgObjEnabled.store(ResolveRendererDebugBgObjEnabled(*currentConfiguration), std::memory_order_relaxed);
         rendererDebugLatchTraceEnabled.store(ResolveRendererDebugLatchTraceEnabled(*currentConfiguration), std::memory_order_relaxed);
+
+        if (rendererDebugToolsEnabled.load(std::memory_order_relaxed))
+        {
+            char diagEnv[PROP_VALUE_MAX] = {};
+            if (__system_property_get("debug.melonds.diag_env", diagEnv) > 0 && diagEnv[0] != '\0')
+            {
+                std::string lista(diagEnv);
+                size_t pos = 0;
+                while (pos <= lista.size())
+                {
+                    const size_t coma = lista.find(',', pos);
+                    const std::string par = lista.substr(pos, coma == std::string::npos ? std::string::npos : coma - pos);
+                    const size_t igual = par.find('=');
+                    if (!par.empty())
+                    {
+                        const std::string clave = igual == std::string::npos ? par : par.substr(0, igual);
+                        const std::string valor = igual == std::string::npos ? "1" : par.substr(igual + 1);
+                        if (clave.rfind("MELON_", 0) == 0)
+                        {
+                            setenv(clave.c_str(), valor.c_str(), 1);
+                            Platform::Log(Platform::LogLevel::Warn, "[diag_env] %s=%s", clave.c_str(), valor.c_str());
+                        }
+                    }
+                    if (coma == std::string::npos)
+                        break;
+                    pos = coma + 1;
+                }
+            }
+        }
         vulkanPerfLoggingEnabled.store(ResolveVulkanPerfLoggingEnabled(), std::memory_order_relaxed);
         vulkanGpu2DPerfLoggingEnabled.store(ResolveVulkanGpu2DPerfLoggingEnabled(), std::memory_order_relaxed);
         vulkanLatchPerfLoggingEnabled.store(ResolveVulkanLatchPerfLoggingEnabled(), std::memory_order_relaxed);
@@ -484,8 +515,8 @@ namespace MelonDSAndroid
         );
         ReplaceInstance(newInstance);
 
-        setupAudio(currentConfiguration->audioSettings);
         setAudioActiveInstance(newInstance);
+        setupAudio(currentConfiguration->audioSettings);
     }
 
     void setCodeList(std::list<Cheat> cheats)
@@ -527,6 +558,14 @@ namespace MelonDSAndroid
         currentInstance->unloadRetroAchievementsData();
     }
 
+    void serviceRetroAchievementsBootstrap()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return;
+        currentInstance->serviceRetroAchievementsBootstrap();
+    }
+
     std::string getRichPresenceStatus()
     {
         auto currentInstance = GetInstanceSnapshot();
@@ -549,6 +588,14 @@ namespace MelonDSAndroid
         if (!currentInstance)
             return { };
         return currentInstance->getRuntimeAchievementBuckets();
+    }
+
+    int getRetroAchievementsSetupFailureReason()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return 0;
+        return currentInstance->getRetroAchievementsSetupFailureReason();
     }
 
     std::vector<long> getRuntimeSubsetIds()
@@ -606,8 +653,9 @@ namespace MelonDSAndroid
 
     Renderer getCurrentRenderer()
     {
-        if (instance != nullptr)
-            return instance->getCurrentRenderer();
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance != nullptr)
+            return currentInstance->getCurrentRenderer();
 
         if (currentConfiguration != nullptr)
             return currentConfiguration->renderer;
@@ -621,11 +669,6 @@ namespace MelonDSAndroid
      * @param emulatorConfiguration The new emulator configuration
      */
     void updateEmulatorConfiguration(std::unique_ptr<EmulatorConfiguration> emulatorConfiguration) {
-        if (instance != nullptr)
-        {
-            instance->normalizeVulkanPipelineProfileForSession(
-                *emulatorConfiguration);
-        }
         std::shared_ptr<EmulatorConfiguration> sharedConfig = ShareConfiguration(std::move(emulatorConfiguration));
         currentConfiguration = sharedConfig;
         rendererDebugToolsEnabled.store(ResolveRendererDebugToolsEnabled(*sharedConfig), std::memory_order_relaxed);
@@ -689,22 +732,47 @@ namespace MelonDSAndroid
 
     bool precompileVulkanPipelines(const VulkanSurfaceConfig& retroArchConfig)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
             return false;
 
-        return instance->precompileVulkanPipelines(retroArchConfig);
+        return currentInstance->precompileVulkanPipelines(retroArchConfig);
     }
 
     void touchScreen(u16 x, u16 y)
     {
-        if (instance)
-            instance->touchScreen(x, y);
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->touchScreen(x, y);
     }
 
     void releaseScreen()
     {
-        if (instance)
-            instance->releaseScreen();
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->releaseScreen();
+    }
+
+    bool armExactLiveGuide(std::int64_t anchorFrame, u16 x, u16 y)
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        return currentInstance
+            && currentInstance->armExactLiveGuide(anchorFrame, x, y);
+    }
+
+    std::string getExactLiveGuideStatusJson()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        return currentInstance
+            ? currentInstance->getExactLiveGuideStatusJson()
+            : std::string("{\"state\":\"unavailable\"}");
+    }
+
+    void abortExactLiveGuide(std::uint32_t reason)
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->abortExactLiveGuide(reason);
     }
 
     void pressKey(u32 key)
@@ -727,91 +795,196 @@ namespace MelonDSAndroid
 
     void start()
     {
-        startAudio();
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return;
+
         if (currentConfiguration->renderer != Renderer::Vulkan)
             setupOpenGlContext();
 
-        instance->start();
+        currentInstance->start();
+        markAudioOutputProducerStarted();
     }
 
-    u32 loop()
+    u32 loop(bool frameskipSolicitado, int frameskipModo, int frameskipManualN, bool drsActivo, bool drsDeuda)
     {
         MPInterface::Get().Process();
         if (currentConfiguration != nullptr && currentConfiguration->renderer != Renderer::Vulkan)
             setupOpenGlContext();
-        return instance->runFrame();
+        instance->configurarFrameskip(frameskipModo, frameskipManualN);
+        instance->configurarDrs(drsActivo, drsDeuda);
+        return instance->runFrame(frameskipSolicitado);
+    }
+
+    bool frameskipConcedidoUltimoFrame()
+    {
+        return instance != nullptr && instance->frameskipConcedidoUltimoFrame();
+    }
+
+    int getVulkanRenderedInternalResolution()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return 0;
+        return currentInstance->getVulkanEscalaRenderizada();
+    }
+
+    std::string getVulkanFrameskipStatsText()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return "renderSkipped=0 presentaciones=0 productos=0 rachaCopiasMax=0 rachaCopias=0 modo=? manualN=0 drs=off";
+        const auto stats = currentInstance->getVulkanFrameskipStats();
+        static const char* const nombresModo[3] = {"off", "manual", "auto"};
+        static const char* const nombresMotivoDrs[] = {"ninguno", "deuda", "margen", "sonda", "sondaFallida", "deudaPersistente"};
+        char buffer[720];
+        snprintf(buffer, sizeof(buffer),
+                 "renderSkipped=%llu presentaciones=%llu productos=%llu rachaCopiasMax=%u rachaCopias=%u modo=%s manualN=%d "
+                 "drs=%s nivel=%d escala=%d/%d bajadas=%u subidas=%u sinFuente3D=%u framesNivel=%llu/%llu/%llu/%llu "
+                 "margenSobre=%u/%u dwell=%d enfr=%d deuda=%d runP50=%u.%02u runP95=%u.%02u "
+                 "sondas=%u sondasFallidas=%u dwellSonda=%d ultimoMotivo=%s stashPreRun=%u stashHostTail=%u rechazosLiveMissing=%u "
+                 "deudaVentana=%u/%u margenBloqueado=%d",
+                 static_cast<unsigned long long>(stats.renderSkipped),
+                 static_cast<unsigned long long>(stats.presentaciones),
+                 static_cast<unsigned long long>(stats.productosNuevos),
+                 static_cast<unsigned>(stats.rachaCopiasMax),
+                 static_cast<unsigned>(stats.rachaCopiasActual),
+                 nombresModo[stats.modo < 3 ? stats.modo : 0], stats.manualN,
+                 stats.drsActivo ? "on" : "off", stats.drsNivel, stats.drsEscala, stats.drsEscalaConfigurada,
+                 static_cast<unsigned>(stats.drsBajadas), static_cast<unsigned>(stats.drsSubidas),
+                 static_cast<unsigned>(stats.drsSinFuente3D),
+                 static_cast<unsigned long long>(stats.drsFramesPorNivel[0]),
+                 static_cast<unsigned long long>(stats.drsFramesPorNivel[1]),
+                 static_cast<unsigned long long>(stats.drsFramesPorNivel[2]),
+                 static_cast<unsigned long long>(stats.drsFramesPorNivel[3]),
+                 static_cast<unsigned>(stats.drsMargenSobre), static_cast<unsigned>(stats.drsMargenLlenas),
+                 stats.drsDwell, stats.drsEnfriamiento, stats.drsDeuda ? 1 : 0,
+                 static_cast<unsigned>(stats.drsRunP50c / 100u), static_cast<unsigned>(stats.drsRunP50c % 100u),
+                 static_cast<unsigned>(stats.drsRunP95c / 100u), static_cast<unsigned>(stats.drsRunP95c % 100u),
+                 static_cast<unsigned>(stats.drsSondas), static_cast<unsigned>(stats.drsSondasFallidas),
+                 stats.drsDwellSonda,
+                 (stats.drsUltimoMotivo >= 0 && stats.drsUltimoMotivo <= 5)
+                     ? nombresMotivoDrs[stats.drsUltimoMotivo] : "?",
+                 static_cast<unsigned>(stats.stashPreRun), static_cast<unsigned>(stats.stashHostTail),
+                 static_cast<unsigned>(stats.rechazosLiveMissing),
+                 static_cast<unsigned>(stats.drsDeudaVentana), static_cast<unsigned>(stats.drsDeudaVentanaN),
+                 stats.drsMargenBloqueado ? 1 : 0);
+        return buffer;
     }
 
     Frame* getPresentationFrame(std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
             return nullptr;
 
-        return instance->getPresentationFrame(deadline);
+        return currentInstance->getPresentationFrame(deadline);
     }
 
     bool waitForPresentationFrame(Frame* frame, u64 timeoutNs)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
             return false;
 
-        return instance->waitForPresentationFrame(frame, timeoutNs);
+        return currentInstance->waitForPresentationFrame(frame, timeoutNs);
     }
 
     int attachVulkanSurface(ANativeWindow* window, u32 width, u32 height)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
         {
             if (window != nullptr)
                 ANativeWindow_release(window);
             return 0;
         }
 
-        return instance->attachVulkanSurface(window, width, height);
+        return currentInstance->attachVulkanSurface(window, width, height);
     }
 
     bool resizeVulkanSurface(int surfaceId, u32 width, u32 height)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
             return false;
 
-        return instance->resizeVulkanSurface(surfaceId, width, height);
+        return currentInstance->resizeVulkanSurface(surfaceId, width, height);
     }
 
     bool configureVulkanSurface(int surfaceId, const VulkanSurfaceConfig& config, const VulkanBackgroundImage& backgroundImage)
     {
-        if (!instance)
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
             return false;
 
-        return instance->configureVulkanSurface(surfaceId, config, backgroundImage);
+        return currentInstance->configureVulkanSurface(surfaceId, config, backgroundImage);
     }
 
     void detachVulkanSurface(int surfaceId)
     {
-        if (instance)
-            instance->detachVulkanSurface(surfaceId);
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->detachVulkanSurface(surfaceId);
     }
 
-    bool presentVulkanFrame(
+    VulkanPresentationResult presentVulkanFrame(
         std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline,
-        std::optional<std::chrono::time_point<std::chrono::steady_clock>> budgetDeadline)
+        std::optional<std::chrono::time_point<std::chrono::steady_clock>> budgetDeadline,
+        u64 expectedWaitEpoch)
     {
-        if (!instance)
-            return false;
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return VulkanPresentationResult::Stopped;
 
-        return instance->presentVulkanFrame(deadline, budgetDeadline);
+        return currentInstance->presentVulkanFrame(
+            deadline,
+            budgetDeadline,
+            expectedWaitEpoch);
+    }
+
+    u64 captureVulkanPresentationWaitEpoch()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        return currentInstance
+            ? currentInstance->captureVulkanPresentationWaitEpoch()
+            : 0;
+    }
+
+    VulkanPresentationWaitResult waitForVulkanPresentationProduct(
+        u64 expectedWaitEpoch,
+        u64 timeoutNs)
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (!currentInstance)
+            return VulkanPresentationWaitResult::Stopped;
+        return currentInstance->waitForVulkanPresentationProduct(
+            expectedWaitEpoch,
+            timeoutNs);
+    }
+
+    void cancelVulkanPresentationWaits()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->cancelVulkanPresentationWaits();
     }
 
     void requestVulkanPresentationResync()
     {
-        if (instance)
-            instance->requestVulkanPresentationResync();
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->requestVulkanPresentationResync();
     }
+
+    std::atomic<std::uint64_t> vulkanUltimaEsperaColaNs{0};
+    std::atomic<int> drsErrorLimitadorC{0};
 
     void requestVulkanFastForwardPresentationTransition()
     {
-        if (instance)
-            instance->requestVulkanFastForwardPresentationTransition();
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->requestVulkanFastForwardPresentationTransition();
     }
 
     bool areRendererDebugToolsEnabled()
@@ -1158,6 +1331,14 @@ namespace MelonDSAndroid
         return instance->captureCurrentCompositedDimensionsForDebug();
     }
 
+    std::vector<u32> captureFaithfulDiagnosticPayloadForDebug(u64 expectedFrameId)
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        return currentInstance
+            ? currentInstance->captureFaithfulDiagnosticPayloadForDebug(expectedFrameId)
+            : std::vector<u32>{};
+    }
+
     std::vector<u32> captureCurrentCompositedFrameForDebug()
     {
         if (!instance)
@@ -1366,21 +1547,57 @@ namespace MelonDSAndroid
 
     void setFastForwardActive(bool enabled)
     {
-        fastForwardActive = enabled;
+        fastForwardActive.store(enabled, std::memory_order_release);
     }
 
     bool isFastForwardActive()
     {
-        return fastForwardActive;
+        return fastForwardActive.load(std::memory_order_acquire);
+    }
+
+    void setMuteOnFastForward(bool enabled)
+    {
+        muteOnFastForward.store(enabled, std::memory_order_release);
+    }
+
+    bool isMuteOnFastForward()
+    {
+        return muteOnFastForward.load(std::memory_order_acquire);
+    }
+
+    void setAudioOutputSpeedHint(double speed)
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->setAudioOutputSpeedHint(speed);
+    }
+
+    void resumeFramePublication()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->resumeFramePublication();
+    }
+
+    void pauseAfterCurrentFramePublication()
+    {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->finishCurrentFramePublicationThenSuspend();
+        pauseAudio();
     }
 
     void pause()
     {
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance)
+            currentInstance->suspendFramePublication();
         pauseAudio();
     }
 
     void resume()
     {
+        resumeFramePublication();
         startAudio();
     }
 
@@ -1564,16 +1781,18 @@ namespace MelonDSAndroid
 
     void stop()
     {
-        if (instance == nullptr)
+        auto currentInstance = GetInstanceSnapshot();
+        if (currentInstance == nullptr)
             return;
 
-        instance->stop();
+        currentInstance->stop();
         cleanupOpenGlContext();
     }
 
     void cleanup()
     {
         cleanupAudio();
+        setAudioActiveInstance(nullptr);
 
         ReplaceInstance(nullptr);
         eventMessenger = nullptr;

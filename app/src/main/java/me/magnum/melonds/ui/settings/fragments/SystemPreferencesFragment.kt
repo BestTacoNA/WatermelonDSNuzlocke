@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 import me.magnum.melonds.R
 import me.magnum.melonds.common.DirectoryAccessValidator
 import me.magnum.melonds.common.UriPermissionManager
+import me.magnum.melonds.domain.repositories.SettingsRepository
 import me.magnum.melonds.impl.SettingsBackupManager
 import me.magnum.melonds.ui.settings.PreferenceFragmentHelper
 import me.magnum.melonds.ui.settings.PreferenceFragmentTitleProvider
@@ -28,6 +30,7 @@ class SystemPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTi
     @Inject lateinit var uriPermissionManager: UriPermissionManager
     @Inject lateinit var directoryAccessValidator: DirectoryAccessValidator
     @Inject lateinit var settingsBackupManager: SettingsBackupManager
+    @Inject lateinit var settingsRepository: SettingsRepository
     private val helper by lazy { PreferenceFragmentHelper(this, uriPermissionManager, directoryAccessValidator) }
     private var updatingMirrorPreference = false
 
@@ -131,6 +134,16 @@ class SystemPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTi
         helper.setupStoragePickerPreference(dldiDirectoryPreference)
         helper.bindPreferenceSummaryToValue(findPreference("system_dldi_sd_card_image_size"))
 
+        val frameskipModePreference = findPreference<ListPreference>("frameskip_mode")!!
+        val frameskipManualPreference = findPreference<ListPreference>("frameskip_manual_value")!!
+        helper.bindPreferenceSummaryToValue(frameskipManualPreference)
+        frameskipManualPreference.isVisible = frameskipModePreference.value == "manual"
+        frameskipModePreference.setOnPreferenceChangeListener { _, newValue ->
+            frameskipManualPreference.isVisible = newValue == "manual"
+            true
+        }
+        updateFrameskipDrsExclusion()
+
         mirrorPreference.setOnPreferenceChangeListener { _, newValue ->
             if (updatingMirrorPreference) {
                 return@setOnPreferenceChangeListener true
@@ -158,6 +171,25 @@ class SystemPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTi
         findPreference<Preference>("restore_external_layout")?.setOnPreferenceClickListener {
             restoreExternalLayoutLauncher.launch(null)
             true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateFrameskipDrsExclusion()
+    }
+
+    private fun updateFrameskipDrsExclusion() {
+        val modePreference = findPreference<ListPreference>("frameskip_mode") ?: return
+        val manualPreference = findPreference<ListPreference>("frameskip_manual_value") ?: return
+        val drsActive = settingsRepository.isVulkanDrsActive()
+        modePreference.isEnabled = !drsActive
+        if (drsActive) {
+            modePreference.summary = getString(R.string.frameskip_mode_disabled_by_drs)
+            manualPreference.isVisible = false
+        } else {
+            modePreference.setSummary(R.string.frameskip_mode_summary)
+            manualPreference.isVisible = modePreference.value == "manual"
         }
     }
 

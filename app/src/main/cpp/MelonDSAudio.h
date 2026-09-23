@@ -5,6 +5,9 @@
 #include "MelonInstance.h"
 #include "types.h"
 
+#include <cstdint>
+#include <string>
+
 namespace MelonDSAndroid
 {
     extern void userEnableMic();
@@ -17,6 +20,10 @@ namespace MelonDSAndroid
     extern void updateAudioSettings(AudioSettings audioSettings);
     extern void setAudioActiveInstance(std::shared_ptr<MelonInstance> instance);
     extern void cleanupAudio();
+    extern void setAudioOutputRunIntent(bool running);
+    extern void markAudioOutputProducerStarted();
+    extern std::string startAudioOutputPcmCapture(std::uint32_t durationMs);
+    extern std::string dumpAudioOutputPcmCapture(const std::string& finalDirectory);
     extern void startAudio();
     extern void pauseAudio();
 }

@@ -28,6 +28,7 @@ class ChoreographerOldFrameRenderer(private val frameRenderCoordinator: FrameRen
     override fun stopRendering() {
         isRendering = false
         Choreographer.getInstance().removeFrameCallback(this)
+        frameRenderCoordinator.cancelPendingFrameRender()
     }
 
     override fun doFrame(frameTimeNanos: Long) {

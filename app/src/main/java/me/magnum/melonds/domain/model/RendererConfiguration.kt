@@ -10,7 +10,6 @@ data class RendererConfiguration(
     val renderer: VideoRenderer,
     val videoFiltering: VideoFiltering,
     val threadedRendering: Boolean,
-    val vulkanPipelineProfile: VulkanPipelineProfile,
     private val internalResolutionScaling: Int,
     val rendererDebugToolsEnabled: Boolean,
     val rendererDebugBgObjEnabled: Boolean,

@@ -17,6 +17,10 @@ abstract class BaseRomFileProcessorFactory(private val context: Context) : RomFi
 
     override fun getFileRomProcessorForDocument(romDocument: DocumentFile): RomFileProcessor? {
         val fileName = romDocument.name ?: return null
+        return getFileRomProcessorForFileName(fileName)
+    }
+
+    override fun getFileRomProcessorForFileName(fileName: String): RomFileProcessor? {
         val lastDotIndex = fileName.lastIndexOf('.')
         if (lastDotIndex < 0) return null
 

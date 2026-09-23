@@ -7,8 +7,27 @@ ThreadSafePerformanceHintSession::ThreadSafePerformanceHintSession(std::unique_p
 void ThreadSafePerformanceHintSession::createSession(pid_t threadId, int64_t targetDurationNs)
 {
     std::lock_guard<std::mutex> lock(sessionMutex);
-    manager->createSession(threadId, targetDurationNs);
-    sessionActive = true;
+    threadIds.assign(1, threadId);
+    manager->createSessionForThreads(threadIds, targetDurationNs);
+
+    sessionActive = manager->hasSession();
+}
+
+void ThreadSafePerformanceHintSession::registerThread(pid_t threadId, int64_t targetDurationNs)
+{
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    for (pid_t existente : threadIds)
+        if (existente == threadId)
+            return;
+    threadIds.push_back(threadId);
+    manager->createSessionForThreads(threadIds, targetDurationNs);
+    sessionActive = manager->hasSession();
+}
+
+bool ThreadSafePerformanceHintSession::isActive()
+{
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    return sessionActive;
 }
 
 void ThreadSafePerformanceHintSession::reportActualWorkDuration(int64_t actualDurationNs)

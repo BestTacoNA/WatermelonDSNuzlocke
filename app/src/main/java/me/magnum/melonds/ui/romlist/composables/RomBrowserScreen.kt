@@ -77,7 +77,7 @@ import me.magnum.melonds.ui.theme.watermelon
 @Composable
 fun RomBrowserScreen(
     state: RomBrowserUiState,
-    coverByHash: Map<String, String>,
+    coverByUri: Map<String, String>,
     boxArtByUri: Map<String, String>,
     searchQuery: String,
     allowConfiguration: Boolean,
@@ -225,7 +225,7 @@ fun RomBrowserScreen(
                                 RomViewMode.GRID -> GridContent(
                                     state = state,
                                     gridState = gridState,
-                                    coverByHash = coverByHash,
+                                    coverByUri = coverByUri,
                                     boxArtByUri = boxArtByUri,
                                     confirmedAchievementHashes = confirmedAchievementHashes,
                                     showAlphabetBar = showAlphabetBar,
@@ -249,7 +249,7 @@ fun RomBrowserScreen(
                                 RomViewMode.LIST -> ListContent(
                                     state = state,
                                     listState = listState,
-                                    coverByHash = coverByHash,
+                                    coverByUri = coverByUri,
                                     boxArtByUri = boxArtByUri,
                                     allowConfiguration = allowConfiguration,
                                     confirmedAchievementHashes = confirmedAchievementHashes,
@@ -357,7 +357,7 @@ fun RomBrowserScreen(
 private fun GridContent(
     state: RomBrowserUiState,
     gridState: LazyGridState,
-    coverByHash: Map<String, String>,
+    coverByUri: Map<String, String>,
     boxArtByUri: Map<String, String>,
     confirmedAchievementHashes: Set<String>,
     showAlphabetBar: Boolean,
@@ -410,7 +410,7 @@ private fun GridContent(
                 item(key = "continue", span = { GridItemSpan(maxLineSpan) }) {
                     ContinuePlayingShelf(
                         roms = state.continuePlaying,
-                        coverByHash = coverByHash,
+                        coverByUri = coverByUri,
                         boxArtByUri = boxArtByUri,
                         onRomClicked = onRomClick,
                         onRomLongPressed = onRomLongPress,
@@ -463,12 +463,12 @@ private fun GridContent(
                 key = { _, entry -> "rom:${entry.rom.uri}" },
             ) { romIdx, entry ->
                 val entryIndex = folderCount + romIdx
-                LaunchedEffect(entry.rom.uri) {
+                LaunchedEffect(entry.rom.uri, entry.rom.config.iconSource) {
                     onRomVisible(entry.rom)
                 }
                 RomGridCard(
                     rom = entry.rom,
-                    coverUrl = coverByHash[entry.rom.retroAchievementsHash],
+                    coverUrl = coverByUri[entry.rom.uri.toString()],
                     boxArtUrl = boxArtByUri[entry.rom.uri.toString()]?.takeIf { it.isNotEmpty() },
                     boxArtLoading = boxArtByUri[entry.rom.uri.toString()] == null,
                     showAchievementBadge = entry.rom.retroAchievementsHash in confirmedAchievementHashes,
@@ -495,7 +495,7 @@ private fun GridContent(
 private fun ListContent(
     state: RomBrowserUiState,
     listState: LazyListState,
-    coverByHash: Map<String, String>,
+    coverByUri: Map<String, String>,
     boxArtByUri: Map<String, String>,
     allowConfiguration: Boolean,
     confirmedAchievementHashes: Set<String>,
@@ -542,7 +542,7 @@ private fun ListContent(
                 item(key = "continue") {
                     ContinuePlayingShelf(
                         roms = state.continuePlaying,
-                        coverByHash = coverByHash,
+                        coverByUri = coverByUri,
                         boxArtByUri = boxArtByUri,
                         onRomClicked = onRomClick,
                         onRomLongPressed = onRomLongPress,
@@ -587,12 +587,12 @@ private fun ListContent(
                         ).cancelDpadDownIf(index == state.entries.lastIndex),
                     )
                     is RomBrowserEntry.RomItem -> {
-                        LaunchedEffect(entry.rom.uri) {
+                        LaunchedEffect(entry.rom.uri, entry.rom.config.iconSource) {
                             onRomVisible(entry.rom)
                         }
                         RomListRow(
                             rom = entry.rom,
-                            coverUrl = coverByHash[entry.rom.retroAchievementsHash],
+                            coverUrl = coverByUri[entry.rom.uri.toString()],
                             boxArtUrl = boxArtByUri[entry.rom.uri.toString()]?.takeIf { it.isNotEmpty() },
                             boxArtLoading = boxArtByUri[entry.rom.uri.toString()] == null,
                             allowConfiguration = allowConfiguration && !entry.rom.isInstalledDsiWareShortcut,

@@ -19,6 +19,8 @@ data class Rom(
     val isFavorite: Boolean = false,
     val installedDsiWareTitleId: Long? = null,
     val installedDsiWareIcon: ByteArray? = null,
+
+    val unsupportedReason: String? = null,
 ) {
     val isInstalledDsiWareShortcut: Boolean
         get() = installedDsiWareTitleId != null

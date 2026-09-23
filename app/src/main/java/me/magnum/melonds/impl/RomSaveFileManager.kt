@@ -61,16 +61,12 @@ class RomSaveFileManager @Inject constructor(
             "Selected file is not a plausible DS save file"
         }
 
-        val targetUri = getOrCreateSaveFile(rom).uri
-        if (sourceUri == targetUri) {
-            return
-        }
-
-        openInputStream(sourceUri).use { input ->
-            openOutputStream(targetUri).use { output ->
-                input.copyTo(output)
-            }
-        }
+        copySaveWithSnapshot(
+            cacheDirectory = context.cacheDir,
+            maxBytes = MAX_PLAUSIBLE_SAVE_FILE_SIZE,
+            openSource = { openInputStream(sourceUri) },
+            openTarget = { openOutputStream(getOrCreateSaveFile(rom).uri) },
+        )
     }
 
     fun isPlausibleSaveFile(uri: Uri): Boolean {

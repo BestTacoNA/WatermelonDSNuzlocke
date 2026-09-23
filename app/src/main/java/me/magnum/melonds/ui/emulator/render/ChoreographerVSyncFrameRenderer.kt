@@ -23,6 +23,7 @@ class ChoreographerVSyncFrameRenderer(
     override fun stopRendering() {
         isRendering = false
         Choreographer.getInstance().removeVsyncCallback(this)
+        frameRenderCoordinator.cancelPendingFrameRender()
     }
 
     override fun onVsync(data: Choreographer.FrameData) {

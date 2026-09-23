@@ -1,7 +1,10 @@
 #ifndef MELONDS_MELONDS_H
 #define MELONDS_MELONDS_H
 
+#include <atomic>
+#include <cstdint>
 #include <list>
+#include <string>
 #include <vector>
 #include <optional>
 #include <android/native_window.h>
@@ -120,10 +123,14 @@ namespace MelonDSAndroid {
         std::optional<RetroAchievements::RARuntimeBridgeConfig> runtimeBridgeConfig
     );
     extern void unloadRetroAchievementsData();
+
+    extern void requestRetroAchievementsBootstrapService();
+    extern void serviceRetroAchievementsBootstrap();
     extern std::string getRichPresenceStatus();
     extern std::vector<RetroAchievements::RARuntimeAchievement> getRuntimeAchievements();
     extern std::vector<RetroAchievements::RARuntimeAchievementBucketEntry> getRuntimeAchievementBuckets();
     extern std::vector<long> getRuntimeSubsetIds();
+    extern int getRetroAchievementsSetupFailureReason();
     extern RetroAchievements::RANativePendingRetryResult retryPendingRetroAchievementsSubmissions(
         const std::vector<uint64_t>& expectedSubmissionIds);
     extern uint64_t refreshPendingRetroAchievementsSubmissions();
@@ -147,22 +154,42 @@ namespace MelonDSAndroid {
     extern bool precompileVulkanPipelines(const VulkanSurfaceConfig& retroArchConfig);
     extern void touchScreen(u16 x, u16 y);
     extern void releaseScreen();
+    extern bool armExactLiveGuide(std::int64_t anchorFrame, u16 x, u16 y);
+    extern std::string getExactLiveGuideStatusJson();
+    extern void abortExactLiveGuide(std::uint32_t reason);
     extern void pressKey(u32 key);
     extern void releaseKey(u32 key);
     extern void setSlot2AnalogInput(float x, float y);
     extern void start();
-    extern u32 loop();
+
+    extern u32 loop(bool frameskipSolicitado, int frameskipModo, int frameskipManualN, bool drsActivo, bool drsDeuda);
+
+    extern bool frameskipConcedidoUltimoFrame();
+
+    extern std::string getVulkanFrameskipStatsText();
+
+    extern int getVulkanRenderedInternalResolution();
     extern Frame* getPresentationFrame(std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline);
     extern bool waitForPresentationFrame(Frame* frame, u64 timeoutNs);
     extern int attachVulkanSurface(ANativeWindow* window, u32 width, u32 height);
     extern bool resizeVulkanSurface(int surfaceId, u32 width, u32 height);
     extern bool configureVulkanSurface(int surfaceId, const VulkanSurfaceConfig& config, const VulkanBackgroundImage& backgroundImage);
     extern void detachVulkanSurface(int surfaceId);
-    extern bool presentVulkanFrame(
+    extern VulkanPresentationResult presentVulkanFrame(
         std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline,
-        std::optional<std::chrono::time_point<std::chrono::steady_clock>> budgetDeadline);
+        std::optional<std::chrono::time_point<std::chrono::steady_clock>> budgetDeadline,
+        u64 expectedWaitEpoch);
+    extern u64 captureVulkanPresentationWaitEpoch();
+    extern VulkanPresentationWaitResult waitForVulkanPresentationProduct(
+        u64 expectedWaitEpoch,
+        u64 timeoutNs);
+    extern void cancelVulkanPresentationWaits();
     extern void requestVulkanPresentationResync();
     extern void requestVulkanFastForwardPresentationTransition();
+
+    extern std::atomic<std::uint64_t> vulkanUltimaEsperaColaNs;
+
+    extern std::atomic<int> drsErrorLimitadorC;
     extern bool areRendererDebugToolsEnabled();
     extern bool areRendererDebugBgObjLogsEnabled();
     extern bool areRendererDebugLatchTraceLogsEnabled();
@@ -214,6 +241,7 @@ namespace MelonDSAndroid {
     extern std::string captureCurrentSoftPackedFrameMetaJsonForDebug();
     extern std::vector<u32> captureCurrentCompositedDimensionsForDebug();
     extern std::vector<u32> captureCurrentCompositedFrameForDebug();
+    extern std::vector<u32> captureFaithfulDiagnosticPayloadForDebug(u64 expectedFrameId);
     extern std::vector<u32> captureCurrent3dDimensionsForDebug();
     extern std::vector<u32> captureCurrent3dFrameForDebug();
     extern std::vector<u32> captureCurrent3dCaptureFrameForDebug();
@@ -242,6 +270,11 @@ namespace MelonDSAndroid {
     extern void dumpCurrentRendererDebugSnapshot();
     extern void setFastForwardActive(bool enabled);
     extern bool isFastForwardActive();
+    extern void setMuteOnFastForward(bool enabled);
+    extern bool isMuteOnFastForward();
+    extern void setAudioOutputSpeedHint(double speed);
+    extern void resumeFramePublication();
+    extern void pauseAfterCurrentFramePublication();
     extern void pause();
     extern void resume();
     extern void reset();

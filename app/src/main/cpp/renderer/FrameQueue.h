@@ -2,12 +2,15 @@
 #define FRAMEQUEUE_H
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <vector>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -30,6 +33,7 @@ struct FrameQueuePolicy
     bool PreserveBacklogOnPresent = false;
     bool ExpandPreservedBacklogToQueueCapacity = false;
     bool BlockRenderWhenBacklogged = false;
+    bool BlockEnqueueWhenBacklogged = false;
     bool TreatBacklogTrimAsFastForwardSkip = false;
     bool UseLegacyOpenGlQueue = false;
 };
@@ -37,6 +41,60 @@ struct FrameQueuePolicy
 enum class FrameBackend : u8 {
     OpenGlTexture = 0,
     VulkanImage = 1,
+};
+
+enum class PresentConsumptionKind : u8
+{
+    None = 0,
+    Timeline = 1,
+    Fence = 2,
+    QueueIdleRecovery = 3,
+};
+
+enum class FrameQueuePresentationWaitResult : u8
+{
+    ProductReady = 0,
+    TimedOut = 1,
+    GenerationChanged = 2,
+};
+
+struct PresentSurfaceObligation
+{
+    int surfaceId = 0;
+    u64 surfaceEpoch = 0;
+    u64 swapchainGeneration = 0;
+    u64 submitSerial = 0;
+};
+
+struct PresentConsumptionToken
+{
+    static constexpr u32 InvalidFenceSlot = std::numeric_limits<u32>::max();
+
+    PresentConsumptionKind kind = PresentConsumptionKind::None;
+    u64 frameId = 0;
+    u64 publicationGeneration = 0;
+    u64 presenterEpoch = 0;
+    u64 completionSerial = 0;
+    u64 timelineValue = 0;
+    u32 fenceSlot = InvalidFenceSlot;
+    std::vector<PresentSurfaceObligation> surfaceObligations;
+
+    bool active() const
+    {
+        return kind != PresentConsumptionKind::None;
+    }
+
+    void clear()
+    {
+        kind = PresentConsumptionKind::None;
+        frameId = 0;
+        publicationGeneration = 0;
+        presenterEpoch = 0;
+        completionSerial = 0;
+        timelineValue = 0;
+        fenceSlot = InvalidFenceSlot;
+        surfaceObligations.clear();
+    }
 };
 
 struct FrameQueueStats
@@ -75,15 +133,19 @@ struct Frame {
     EGLSyncKHR renderFence{};
     EGLSyncKHR presentFence{};
     u64 renderTimelineValue{};
-    u64 presentTimelineValue{};
+
+    PresentConsumptionToken presentConsumptionToken{};
     u64 queuedAtNs{};
+    u64 publicationGeneration{};
 };
 
 class FrameQueue
 {
 public:
     FrameQueue();
-    Frame* getRenderFrame(const FrameQueuePolicy& policy);
+    u64 capturePublicationGeneration();
+    bool isPublicationGenerationCurrent(u64 expectedPublicationGeneration);
+    Frame* getRenderFrame(const FrameQueuePolicy& policy, u64 expectedPublicationGeneration);
     Frame* getPresentFrame(const FrameQueuePolicy& policy, std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline);
     Frame* getPresentCandidate(const FrameQueuePolicy& policy, std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline);
     Frame* getReusablePreviousFrame(const FrameQueuePolicy& policy);
@@ -91,10 +153,18 @@ public:
     void commitPresentedFrame(Frame* frame, const FrameQueuePolicy& policy);
     void deferPresentedFrame(Frame* frame, const FrameQueuePolicy& policy);
     void validateRenderFrame(Frame* frame, int requiredWidth, int requiredHeight, FrameBackend backend);
-    void pushRenderedFrame(Frame* frame, const FrameQueuePolicy& policy);
+    bool pushRenderedFrame(Frame* frame, const FrameQueuePolicy& policy);
     void discardRenderedFrame(Frame* frame);
+    void cancelPendingPublications();
+    void suspendPublications();
+    void resumePublications();
     void requestPresentationResync();
     void requestFastForwardPresentationTransition();
+    u64 capturePresentationWaitEpoch() const noexcept;
+    FrameQueuePresentationWaitResult waitForPresentProduct(
+        u64 expectedWaitEpoch,
+        u64 timeoutNs);
+    void cancelPresentationWaits() noexcept;
     void clear();
     FrameQueueStats takeStatsSnapshotAndReset();
 
@@ -109,6 +179,9 @@ private:
 
     static FrameQueuePolicy sanitizePolicy(FrameQueuePolicy policy);
     void rebuildFreeQueueLocked();
+    void invalidatePublicationGenerationLocked();
+    void advancePresentationWaitEpoch() noexcept;
+    bool recycleCanceledPublicationLocked(Frame* frame);
     void dropPendingFramesToBacklogLocked(u64 maxBacklogDepth, bool treatAsFastForwardSkip);
     void updateBacklogStatsLocked();
     void recordPresentedFrameAgeLocked(Frame* frame, u64 nowNs);
@@ -124,7 +197,10 @@ private:
     Frame* previousFrame = nullptr;
     Frame* pendingPresentFrame = nullptr;
     bool suppressPreviousFrameReuse = false;
+    bool publicationsSuspended = false;
+    std::atomic<u64> presentationWaitEpoch{1};
     u64 nextFrameId = 1;
+    u64 publicationGeneration = 1;
     FrameQueueStats stats{};
 };
 

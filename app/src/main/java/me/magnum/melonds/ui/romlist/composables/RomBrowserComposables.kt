@@ -374,7 +374,7 @@ fun LibrarySectionHeader(
 @Composable
 fun ContinuePlayingShelf(
     roms: List<Rom>,
-    coverByHash: Map<String, String>,
+    coverByUri: Map<String, String>,
     boxArtByUri: Map<String, String> = emptyMap(),
     onRomClicked: (Rom) -> Unit,
     onRomLongPressed: (Rom) -> Unit,
@@ -399,12 +399,12 @@ fun ContinuePlayingShelf(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(roms, key = { it.uri.toString() }) { rom ->
-                LaunchedEffect(rom.uri) {
+                LaunchedEffect(rom.uri, rom.config.iconSource) {
                     onRomVisible(rom)
                 }
                 ContinuePlayingCard(
                     rom = rom,
-                    coverUrl = coverByHash[rom.retroAchievementsHash],
+                    coverUrl = coverByUri[rom.uri.toString()],
                     boxArtUrl = boxArtByUri[rom.uri.toString()]?.takeIf { it.isNotEmpty() },
                     boxArtLoading = boxArtByUri[rom.uri.toString()] == null,
                     onClick = { onRomClicked(rom) },

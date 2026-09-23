@@ -26,8 +26,10 @@ internal enum class RendererDebugCaptureKind {
     COMP4_BOTTOM_PLACEHOLDER,
     CAPTURE_FALLBACK_MASK,
     SOFT_PACKED_FRAME_META_JSON,
+    FAITHFUL_DIAGNOSTIC_PAYLOAD,
     COMPOSITED_FRAME,
     RENDERER3D_FRAME,
+    KEEP_DARK,
     RENDERER3D_CAPTURE_FRAME,
     RENDERER3D_DEPTH,
     RENDERER3D_ATTR,
@@ -44,12 +46,8 @@ internal object RendererDebugCapturePresets {
         RendererDebugCaptureKind.SCREEN_FRAME,
         RendererDebugCaptureKind.PACKED_TOP_PRIMARY,
         RendererDebugCaptureKind.PACKED_BOTTOM_PRIMARY,
-        RendererDebugCaptureKind.CAPTURE3D_SOURCE_DS_FRAME,
         RendererDebugCaptureKind.CAPTURE_LINE_USES_3D_MASK,
-        RendererDebugCaptureKind.COMP4_TOP_PLACEHOLDER,
-        RendererDebugCaptureKind.COMP4_BOTTOM_PLACEHOLDER,
-        RendererDebugCaptureKind.CAPTURE_FALLBACK_MASK,
-        RendererDebugCaptureKind.SOFT_PACKED_FRAME_META_JSON,
+        RendererDebugCaptureKind.FAITHFUL_DIAGNOSTIC_PAYLOAD,
         RendererDebugCaptureKind.COMPOSITED_FRAME,
         RendererDebugCaptureKind.RENDERER3D_FRAME,
         RendererDebugCaptureKind.RENDERER3D_CAPTURE_FRAME,
@@ -73,6 +71,9 @@ internal object RendererDebugCaptureLogger {
         captureKinds: Set<RendererDebugCaptureKind> = setOf(RendererDebugCaptureKind.SCREEN_FRAME),
         warmupFrames: Int = 0,
         onCaptureArmed: (suspend () -> Unit)? = null,
+
+        burstHookAtFrame: Int = -1,
+        onBurstFrame: (() -> Unit)? = null,
     ): List<RendererDebugCaptureResult> {
         val safeBurstCount = burstCount.coerceAtLeast(1)
         val safeStepFrames = burstStepFrames.coerceAtLeast(1)
@@ -119,6 +120,9 @@ internal object RendererDebugCaptureLogger {
         if (RendererDebugCaptureKind.RENDERER3D_FRAME in requestedKinds) {
             captureKindsMask = captureKindsMask or RendererDebugBridge.DENSE_CAPTURE_RENDERER3D_FRAME
         }
+        if (RendererDebugCaptureKind.KEEP_DARK in requestedKinds) {
+            captureKindsMask = captureKindsMask or RendererDebugBridge.DENSE_CAPTURE_KEEP_DARK
+        }
         if (captureKindsMask == 0) {
             captureKindsMask = RendererDebugBridge.DENSE_CAPTURE_SCREEN_FRAME
         }
@@ -143,9 +147,17 @@ internal object RendererDebugCaptureLogger {
         }
         val deadlineAt = System.nanoTime() +
             (timeoutMs.coerceAtLeast(1L) + warmupTimeoutMs) * 1_000_000L
+        var burstHookFired = false
         while (System.nanoTime() < deadlineAt) {
             if (RendererDebugBridge.isDenseScreenBurstCaptureComplete()) {
                 break
+            }
+            if (!burstHookFired && burstHookAtFrame >= 0 && onBurstFrame != null &&
+                RendererDebugBridge.getDenseScreenBurstCaptureFrameCount() >= burstHookAtFrame
+            ) {
+                burstHookFired = true
+                Log.w(TAG, "captureId=$captureIdBase source=dense_burst stage=hook atFrame=$burstHookAtFrame capturedSoFar=${RendererDebugBridge.getDenseScreenBurstCaptureFrameCount()}")
+                onBurstFrame.invoke()
             }
             kotlinx.coroutines.delay(8L)
         }
@@ -156,6 +168,12 @@ internal object RendererDebugCaptureLogger {
         val eligibleCallbacksObserved = scheduleStats?.getOrNull(2) ?: -1
         val firstCaptureOrdinal = scheduleStats?.getOrNull(3) ?: -1
         val lastCaptureOrdinal = scheduleStats?.getOrNull(4) ?: -1
+        if (RendererDebugCaptureKind.KEEP_DARK in requestedKinds) {
+            Log.w(
+                TAG,
+                "captureId=$captureIdBase source=dense_burst keepdarkStats observed=${scheduleStats?.getOrNull(5) ?: -1} darkTop=${scheduleStats?.getOrNull(6) ?: -1} darkBottom=${scheduleStats?.getOrNull(7) ?: -1} darkFrames=${scheduleStats?.getOrNull(8) ?: -1} stored=${scheduleStats?.getOrNull(9) ?: -1}",
+            )
+        }
         val warmupSatisfied =
             warmupFramesRequested == safeWarmupFrames && warmupFramesObserved >= safeWarmupFrames
         val captureComplete = RendererDebugBridge.isDenseScreenBurstCaptureComplete()
@@ -219,6 +237,12 @@ internal object RendererDebugCaptureLogger {
                 } else {
                     null
                 }
+                if (RendererDebugCaptureKind.KEEP_DARK in requestedKinds) {
+
+                    val darkMeta = RendererDebugBridge.getDenseScreenBurstSoftPackedFrameMetaJson(index).orEmpty()
+                    Log.w(TAG, "captureId=$captureId source=dense_burst keepdark=$darkMeta")
+                    resolvedOutputDir?.let { File(it, "$captureId.darkmeta.json").writeText(darkMeta) }
+                }
                 val frame3d = if (RendererDebugCaptureKind.RENDERER3D_FRAME in requestedKinds) {
                     RendererDebugBridge.getDenseScreenBurstRenderer3dFrame(index)
                 } else {
@@ -234,7 +258,7 @@ internal object RendererDebugCaptureLogger {
                     "captureId=$captureId stage=begin configuredRenderer=${configuredRenderer.name.lowercase(Locale.US)} frameId=$frameId frameReady=${if (frameReady) 1 else 0} freezeSnapshot=0 kinds=${requestedKinds.joinToString(separator = ",") { it.name.lowercase(Locale.US) }} source=dense_burst",
                 )
                 if (RendererDebugCaptureKind.SCREEN_FRAME in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "screenFrame",
@@ -244,7 +268,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_TOP_PRIMARY in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedTopPrimary",
@@ -254,7 +278,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_BOTTOM_PRIMARY in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedBottomPrimary",
@@ -264,7 +288,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_TOP_PLANE1 in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedTopPlane1",
@@ -274,7 +298,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_TOP_CONTROL in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedTopControl",
@@ -284,7 +308,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_BOTTOM_PLANE1 in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedBottomPlane1",
@@ -294,7 +318,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.PACKED_BOTTOM_CONTROL in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "packedBottomControl",
@@ -304,7 +328,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.CAPTURE3D_SOURCE_DS_FRAME in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "capture3dSourceDsFrame",
@@ -314,7 +338,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.CAPTURE_LINE_USES_3D_MASK in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "captureLineUses3dMask",
@@ -324,7 +348,7 @@ internal object RendererDebugCaptureLogger {
                     )
                 }
                 if (RendererDebugCaptureKind.RENDERER3D_CAPTURE_FRAME in requestedKinds) {
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "renderer3dCaptureFrame",
@@ -346,7 +370,7 @@ internal object RendererDebugCaptureLogger {
                 if (RendererDebugCaptureKind.RENDERER3D_FRAME in requestedKinds) {
                     val renderer3dWidth = inferRenderer3dWidth(frame3d)
                     val renderer3dHeight = inferRenderer3dHeight(frame3d, renderer3dWidth)
-                    saveFramePng(
+                    saveFrameArtifacts(
                         outputDir = resolvedOutputDir,
                         captureId = captureId,
                         kind = "renderer3dFrame",
@@ -460,6 +484,11 @@ internal object RendererDebugCaptureLogger {
         val captureId = captureIdOverride ?: java.lang.Long.toHexString(System.currentTimeMillis())
         val frameId = RendererDebugBridge.getCurrentFrameIndexForDebug()
         val frameReady = RendererDebugBridge.isCurrentFrameReadyForDebug()
+        val faithfulWords = if (RendererDebugCaptureKind.FAITHFUL_DIAGNOSTIC_PAYLOAD in requestedKinds) {
+            RendererDebugBridge.captureFaithfulDiagnosticPayload(frameId.toLong())
+        } else {
+            null
+        }
         Log.w(
             TAG,
             "captureId=$captureId stage=begin configuredRenderer=${configuredRenderer.name.lowercase(Locale.US)} frameId=$frameId frameReady=${if (frameReady) 1 else 0} freezeSnapshot=${if (freezeRendererSnapshot) 1 else 0} kinds=${requestedKinds.joinToString(separator = ",") { it.name.lowercase(Locale.US) }}",
@@ -652,12 +681,19 @@ internal object RendererDebugCaptureLogger {
             null
         }
 
+        val depth3dWidth = inferRenderer3dWidth(depth3d)
+        val depth3dHeight = inferRenderer3dHeight(depth3d, depth3dWidth)
+        val attr3dWidth = inferRenderer3dWidth(attr3d)
+        val attr3dHeight = inferRenderer3dHeight(attr3d, attr3dWidth)
+        val coverage3dWidth = inferRenderer3dWidth(coverage3d)
+        val coverage3dHeight = inferRenderer3dHeight(coverage3d, coverage3dWidth)
+
         val resolvedOutputDir = outputDir?.takeIf { directory ->
             directory.exists() || directory.mkdirs()
         }
 
         if (RendererDebugCaptureKind.SCREEN_FRAME in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "screenFrame",
@@ -667,7 +703,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_TOP_PRIMARY in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedTopPrimary",
@@ -677,7 +713,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_BOTTOM_PRIMARY in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedBottomPrimary",
@@ -687,7 +723,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_TOP_PLANE1 in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedTopPlane1",
@@ -697,7 +733,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_TOP_CONTROL in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedTopControl",
@@ -707,7 +743,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_BOTTOM_PLANE1 in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedBottomPlane1",
@@ -717,7 +753,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.PACKED_BOTTOM_CONTROL in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "packedBottomControl",
@@ -727,7 +763,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.CAPTURE3D_SOURCE_DS_FRAME in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "capture3dSourceDsFrame",
@@ -737,7 +773,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.CAPTURE_LINE_USES_3D_MASK in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "captureLineUses3dMask",
@@ -747,7 +783,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.COMP4_TOP_PLACEHOLDER in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "comp4TopPlaceholder",
@@ -757,7 +793,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.COMP4_BOTTOM_PLACEHOLDER in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "comp4BottomPlaceholder",
@@ -767,7 +803,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.CAPTURE_FALLBACK_MASK in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "captureFallbackMask",
@@ -786,7 +822,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.COMPOSITED_FRAME in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "compositedFrame",
@@ -796,7 +832,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_FRAME in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "renderer3dFrame",
@@ -806,7 +842,7 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_CAPTURE_FRAME in requestedKinds) {
-            saveFramePng(
+            saveFrameArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "renderer3dCaptureFrame",
@@ -816,34 +852,34 @@ internal object RendererDebugCaptureLogger {
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_DEPTH in requestedKinds) {
-            saveValueMapPng(
+            saveValueMapArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "renderer3dDepth",
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = depth3dWidth,
+                height = depth3dHeight,
                 values = depth3d,
                 mapper = ::encodeDepthDebugPixel,
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_ATTR in requestedKinds) {
-            saveValueMapPng(
+            saveValueMapArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "renderer3dAttr",
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = attr3dWidth,
+                height = attr3dHeight,
                 values = attr3d,
                 mapper = ::encodeAttrDebugPixel,
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_COVERAGE in requestedKinds) {
-            saveValueMapPng(
+            saveValueMapArtifacts(
                 outputDir = resolvedOutputDir,
                 captureId = captureId,
                 kind = "renderer3dCoverage",
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = coverage3dWidth,
+                height = coverage3dHeight,
                 values = coverage3d,
                 mapper = ::encodeCoverageDebugPixel,
             )
@@ -851,7 +887,7 @@ internal object RendererDebugCaptureLogger {
 
         Log.w(
             TAG,
-            "captureId=$captureId kind=meta screen=${describeBufferShape(RendererDebugBridge.CAPTURE_WIDTH, RendererDebugBridge.CAPTURE_HEIGHT, screenFrame)} packedTop=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopPrimary)} packedBottom=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomPrimary)} packedTopPlane1=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopPlane1)} packedTopControl=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopControl)} packedBottomPlane1=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomPlane1)} packedBottomControl=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomControl)} capture3dSource=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, capture3dSourceDsFrame)} captureLineMask=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureLineUses3dMask)} comp4Top=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, comp4TopPlaceholder)} comp4Bottom=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, comp4BottomPlaceholder)} fallbackMask=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureFallbackMask)} softPackedMeta=${if (softPackedFrameMetaJson.isNullOrBlank()) 0 else 1} composited=${describeBufferShape(compositedWidth, compositedHeight, compositedFrame)} renderer3d=${describeBufferShape(renderer3dWidth, renderer3dHeight, frame3d)} renderer3dCapture=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureFrame3d)} depth=${describeBufferShape(renderer3dWidth, renderer3dHeight, depth3d)} attr=${describeBufferShape(renderer3dWidth, renderer3dHeight, attr3d)} coverage=${describeBufferShape(renderer3dWidth, renderer3dHeight, coverage3d)}",
+            "captureId=$captureId kind=meta screen=${describeBufferShape(RendererDebugBridge.CAPTURE_WIDTH, RendererDebugBridge.CAPTURE_HEIGHT, screenFrame)} packedTop=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopPrimary)} packedBottom=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomPrimary)} packedTopPlane1=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopPlane1)} packedTopControl=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedTopControl)} packedBottomPlane1=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomPlane1)} packedBottomControl=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, packedBottomControl)} capture3dSource=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, capture3dSourceDsFrame)} captureLineMask=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureLineUses3dMask)} comp4Top=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, comp4TopPlaceholder)} comp4Bottom=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, comp4BottomPlaceholder)} fallbackMask=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureFallbackMask)} softPackedMeta=${if (softPackedFrameMetaJson.isNullOrBlank()) 0 else 1} composited=${describeBufferShape(compositedWidth, compositedHeight, compositedFrame)} renderer3d=${describeBufferShape(renderer3dWidth, renderer3dHeight, frame3d)} renderer3dCapture=${describeBufferShape(CAPTURE_3D_LINE_WIDTH, CAPTURE_3D_LINE_HEIGHT, captureFrame3d)} depth=${describeBufferShape(depth3dWidth, depth3dHeight, depth3d)} attr=${describeBufferShape(attr3dWidth, attr3dHeight, attr3d)} coverage=${describeBufferShape(coverage3dWidth, coverage3dHeight, coverage3d)}",
         )
 
         if (RendererDebugCaptureKind.SCREEN_FRAME in requestedKinds) {
@@ -998,29 +1034,32 @@ internal object RendererDebugCaptureLogger {
         if (RendererDebugCaptureKind.RENDERER3D_DEPTH in requestedKinds) {
             logDepthSummary(
                 captureId = captureId,
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = depth3dWidth,
+                height = depth3dHeight,
                 values = depth3d,
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_ATTR in requestedKinds) {
             logAttrSummary(
                 captureId = captureId,
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = attr3dWidth,
+                height = attr3dHeight,
                 values = attr3d,
             )
         }
         if (RendererDebugCaptureKind.RENDERER3D_COVERAGE in requestedKinds) {
             logCoverageSummary(
                 captureId = captureId,
-                width = renderer3dWidth,
-                height = renderer3dHeight,
+                width = coverage3dWidth,
+                height = coverage3dHeight,
                 values = coverage3d,
             )
         }
 
-        val success = (
+        val faithfulPayloadOk = RendererDebugCaptureKind.FAITHFUL_DIAGNOSTIC_PAYLOAD !in requestedKinds ||
+            ((outputDir == null || resolvedOutputDir != null) &&
+                saveFaithfulDiagnosticPayload(resolvedOutputDir, captureId, frameId.toLong(), faithfulWords))
+        val success = (configuredRenderer != VideoRenderer.VULKAN || faithfulPayloadOk) && (
             (RendererDebugCaptureKind.SCREEN_FRAME in requestedKinds && hasData(screenFrame))
                 || (RendererDebugCaptureKind.PACKED_TOP_PRIMARY in requestedKinds && hasData(packedTopPrimary))
                 || (RendererDebugCaptureKind.PACKED_BOTTOM_PRIMARY in requestedKinds && hasData(packedBottomPrimary))
@@ -1040,6 +1079,7 @@ internal object RendererDebugCaptureLogger {
                 || (RendererDebugCaptureKind.RENDERER3D_DEPTH in requestedKinds && hasData(depth3d))
                 || (RendererDebugCaptureKind.RENDERER3D_ATTR in requestedKinds && hasData(attr3d))
                 || (RendererDebugCaptureKind.RENDERER3D_COVERAGE in requestedKinds && hasData(coverage3d))
+                || (RendererDebugCaptureKind.FAITHFUL_DIAGNOSTIC_PAYLOAD in requestedKinds && faithfulPayloadOk)
             )
         Log.w(
             TAG,
@@ -1050,6 +1090,34 @@ internal object RendererDebugCaptureLogger {
             success = success,
             outputDir = resolvedOutputDir,
         )
+    }
+
+    private fun saveFaithfulDiagnosticPayload(
+        outputDir: File?,
+        captureId: String,
+        frameId: Long,
+        words: IntArray?,
+    ): Boolean {
+        val kind = "faithfulDiagnosticPayload"
+        val metadata = RendererFaithfulDiagnosticPayload.parse(words, frameId)
+        if (metadata == null || words == null || RendererDebugBridge.getCurrentFrameIndexForDebug().toLong() != frameId) {
+            Log.w(TAG, "captureId=$captureId kind=$kind available=0 frameId=$frameId")
+            return false
+        }
+        val crc32 = crc32Hex(words)
+        Log.w(TAG, "captureId=$captureId kind=$kind available=1 schema=WFD1 frameId=$frameId words=${words.size} crc32=$crc32")
+        if (outputDir == null) return true
+        return try {
+            val rawFile = File(outputDir, "${captureId}_$kind.u32le")
+            FileOutputStream(rawFile).use { RendererDebugRawWriter.write(words, it) }
+            val jsonFile = File(outputDir, "${captureId}_$kind.json")
+            jsonFile.writeText(metadata.toJson(crc32))
+            Log.w(TAG, "captureId=$captureId kind=$kind raw=${rawFile.absolutePath} rawFormat=u32le words=${words.size} bytes=${words.size.toLong() * Int.SIZE_BYTES} crc32=$crc32 text=${jsonFile.absolutePath}")
+            true
+        } catch (error: Exception) {
+            Log.w(TAG, "captureId=$captureId kind=$kind raw_save_failed=1", error)
+            false
+        }
     }
 
     private fun hasData(values: IntArray?): Boolean {
@@ -1134,28 +1202,43 @@ internal object RendererDebugCaptureLogger {
         )
     }
 
-    private fun saveFramePng(
+    private fun saveFrameArtifacts(
         outputDir: File?,
         captureId: String,
         kind: String,
         width: Int,
         height: Int,
         pixels: IntArray?,
+        rawValues: IntArray? = pixels,
     ) {
         val directory = outputDir ?: return
         val data = pixels ?: return
-        if (width <= 0 || height <= 0 || data.size != width * height) {
+        val original = rawValues ?: return
+        if (width <= 0 || height <= 0 || data.size.toLong() != width.toLong() * height || original.size != data.size) {
             return
+        }
+
+        val rawFile = File(directory, "${captureId}_${kind}.u32le")
+        try {
+            FileOutputStream(rawFile).use { stream ->
+                RendererDebugRawWriter.write(original, stream)
+            }
+            Log.w(TAG, "captureId=$captureId kind=$kind raw=${rawFile.absolutePath} rawFormat=u32le size=${width}x${height} bytes=${original.size.toLong() * Int.SIZE_BYTES} crc32=${crc32Hex(original)}")
+        } catch (error: Exception) {
+            Log.w(TAG, "captureId=$captureId kind=$kind raw_save_failed=1", error)
         }
 
         val file = File(directory, "${captureId}_${kind}.png")
         try {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            bitmap.setPixels(data, 0, width, 0, 0, width, height)
-            FileOutputStream(file).use { stream ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            try {
+                bitmap.setPixels(data, 0, width, 0, 0, width, height)
+                FileOutputStream(file).use { stream ->
+                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "PNG compression failed" }
+                }
+            } finally {
+                bitmap.recycle()
             }
-            bitmap.recycle()
             Log.w(TAG, "captureId=$captureId kind=$kind png=${file.absolutePath}")
         } catch (error: Exception) {
             Log.w(TAG, "captureId=$captureId kind=$kind png_save_failed=1", error)
@@ -1180,7 +1263,7 @@ internal object RendererDebugCaptureLogger {
         }
     }
 
-    private fun saveValueMapPng(
+    private fun saveValueMapArtifacts(
         outputDir: File?,
         captureId: String,
         kind: String,
@@ -1201,13 +1284,14 @@ internal object RendererDebugCaptureLogger {
         for (index in data.indices) {
             pixels[index] = mapper(data[index])
         }
-        saveFramePng(
+        saveFrameArtifacts(
             outputDir = outputDir,
             captureId = captureId,
             kind = kind,
             width = width,
             height = height,
             pixels = pixels,
+            rawValues = data,
         )
     }
 

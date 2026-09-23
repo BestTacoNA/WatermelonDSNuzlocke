@@ -3,7 +3,6 @@ package me.magnum.melonds
 import me.magnum.melonds.common.UriFileHandler
 import me.magnum.melonds.domain.model.VulkanDriverConfiguration
 import me.magnum.melonds.domain.model.VulkanDriverMode
-import me.magnum.melonds.domain.model.VulkanPipelineProfile
 
 object MelonDSAndroidInterface {
     const val RENDERER_CAP_OPENGL = 1 shl 0
@@ -28,10 +27,8 @@ object MelonDSAndroidInterface {
     )
     external fun getEmulatorGlContext(): Long
     external fun getRendererCapabilities(): Int
-    private external fun canInitializeVulkanRendererForProfileNative(
-        fastPathEnabled: Boolean,
-    ): Boolean
-    external fun setVulkanCompatibilityOverridesNative(
+    private external fun canInitializeVulkanRendererNative(): Boolean
+    external fun setVulkanCapabilityOverridesNative(
         disableTimelineSemaphores: Boolean,
         disableDynamicTextureIndexing: Boolean,
     )
@@ -66,18 +63,18 @@ object MelonDSAndroidInterface {
         }.getOrDefault(false)
     }
 
-    fun canInitializeVulkanRenderer(profile: VulkanPipelineProfile): Boolean {
+    fun canInitializeVulkanRenderer(): Boolean {
         return runCatching {
-            canInitializeVulkanRendererForProfileNative(profile.usesFastPath)
+            canInitializeVulkanRendererNative()
         }.getOrDefault(false)
     }
 
-    fun setVulkanCompatibilityOverrides(
+    fun setVulkanCapabilityOverrides(
         disableTimelineSemaphores: Boolean,
         disableDynamicTextureIndexing: Boolean,
     ) {
         runCatching {
-            setVulkanCompatibilityOverridesNative(
+            setVulkanCapabilityOverridesNative(
                 disableTimelineSemaphores,
                 disableDynamicTextureIndexing,
             )

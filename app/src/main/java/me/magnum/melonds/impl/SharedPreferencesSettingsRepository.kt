@@ -29,6 +29,8 @@ import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.encodeToStream
 import me.magnum.melonds.common.retroarch.RetroArchShaderPreset
 import me.magnum.melonds.common.retroarch.RetroArchShaderRootResolver
+import me.magnum.melonds.domain.model.FrameskipMode
+import me.magnum.melonds.domain.model.FrameskipConfiguration
 import me.magnum.melonds.domain.model.RetroArchShaderSource
 import me.magnum.melonds.common.uridelegates.UriHandler
 import me.magnum.melonds.domain.model.AudioBitrate
@@ -56,7 +58,6 @@ import me.magnum.melonds.domain.model.SortingMode
 import me.magnum.melonds.domain.model.SortingOrder
 import me.magnum.melonds.domain.model.VideoFiltering
 import me.magnum.melonds.domain.model.VideoRenderer
-import me.magnum.melonds.domain.model.VulkanPipelineProfile
 import me.magnum.melonds.domain.model.resolveThreadedRendering
 import me.magnum.melonds.domain.model.VulkanDriverConfiguration
 import me.magnum.melonds.domain.model.VulkanDriverInfo
@@ -172,7 +173,6 @@ class SharedPreferencesSettingsRepository(
         val filtering: VideoFiltering,
         val threadedRenderingEnabled: Boolean,
         val resolutionScaling: Int,
-        val vulkanPipelineProfile: VulkanPipelineProfile,
         val rendererDebugToolsEnabled: Boolean,
         val rendererDebugBgObjEnabled: Boolean,
         val rendererDebugLatchTraceEnabled: Boolean,
@@ -201,14 +201,12 @@ class SharedPreferencesSettingsRepository(
                 getVideoFiltering(),
                 isThreadedRenderingEnabled(),
                 getVideoInternalResolutionScaling(),
-                isVulkanFastPathEnabled(),
-            ) { renderer, filtering, threadedRenderingEnabled, resolutionScaling, vulkanFastPathEnabled ->
+            ) { renderer, filtering, threadedRenderingEnabled, resolutionScaling ->
                 CoreRenderConfigurationInputs(
                     renderer,
                     filtering,
                     threadedRenderingEnabled,
                     resolutionScaling,
-                    VulkanPipelineProfile.fromFastPathPreference(vulkanFastPathEnabled),
                     rendererDebugToolsEnabled = false,
                     rendererDebugBgObjEnabled = false,
                     rendererDebugLatchTraceEnabled = false,
@@ -279,11 +277,6 @@ class SharedPreferencesSettingsRepository(
                 renderInputs.core.renderer,
                 effectiveFiltering,
                 effectiveThreadedRendering,
-                if (renderInputs.core.renderer == VideoRenderer.VULKAN) {
-                    renderInputs.core.vulkanPipelineProfile
-                } else {
-                    VulkanPipelineProfile.COMPATIBILITY
-                },
                 renderInputs.core.resolutionScaling,
                 renderInputs.core.rendererDebugToolsEnabled,
                 renderInputs.core.rendererDebugBgObjEnabled,
@@ -346,6 +339,9 @@ class SharedPreferencesSettingsRepository(
             context.filesDir.absolutePath,
             getFastForwardSpeedMultiplier(),
             getFrameLimitSpeedMultiplier(),
+            getFrameskipConfiguration().mode.nativeValue,
+            getFrameskipConfiguration().manualValue,
+            isVulkanDrsActive(),
             isRewindEnabled(),
             getRewindPeriod(),
             getRewindWindow(),
@@ -367,6 +363,7 @@ class SharedPreferencesSettingsRepository(
                 folderSync = isDldiSdCardEnabled() && getDldiSdCardDirectory() != null,
                 folderPath = File(context.filesDir, "dldi/sync").absolutePath,
             ),
+            muteOnFastForward = isMuteOnFastForwardEnabled(),
         )
     }
 
@@ -390,6 +387,44 @@ class SharedPreferencesSettingsRepository(
     override fun getFastForwardSpeedMultiplier(): Float {
         val speedMultiplierPreference = preferences.getString("fast_forward_speed_multiplier", "-1")!!
         return speedMultiplierPreference.toFloatOrNull() ?: -1.0f
+    }
+
+    private fun getFrameskipMode(): FrameskipMode {
+        return FrameskipMode.fromPreferenceValue(preferences.getString("frameskip_mode", FrameskipMode.AUTO.preferenceValue))
+    }
+
+    private fun getFrameskipManualValue(): Int {
+        val value = preferences.getString("frameskip_manual_value", "1")?.toIntOrNull() ?: 1
+        return value.coerceIn(FrameskipConfiguration.MANUAL_VALUE_MIN, FrameskipConfiguration.MANUAL_VALUE_MAX)
+    }
+
+    override fun getFrameskipConfiguration(): FrameskipConfiguration {
+
+        if (isVulkanDrsActive()) {
+            return FrameskipConfiguration(FrameskipMode.OFF, getFrameskipManualValue())
+        }
+        return FrameskipConfiguration(getFrameskipMode(), getFrameskipManualValue())
+    }
+
+    override fun observeFrameskipConfiguration(): Flow<FrameskipConfiguration> {
+        return combine(
+            getOrCreatePreferenceSharedFlow("frameskip_mode") { getFrameskipMode() },
+            getOrCreatePreferenceSharedFlow("frameskip_manual_value") { getFrameskipManualValue() },
+            observeVulkanDrsEnabled(),
+            getVideoRenderer(),
+        ) { _, _, _, _ -> getFrameskipConfiguration() }
+    }
+
+    override fun isVulkanDrsEnabled(): Boolean {
+        return preferences.getBoolean("video_vulkan_drs", false)
+    }
+
+    override fun observeVulkanDrsEnabled(): Flow<Boolean> {
+        return getOrCreatePreferenceSharedFlow("video_vulkan_drs") { isVulkanDrsEnabled() }
+    }
+
+    override fun isVulkanDrsActive(): Boolean {
+        return isVulkanDrsEnabled() && getCurrentVideoRenderer() == VideoRenderer.VULKAN
     }
 
     override fun getFrameLimitSpeedMultiplier(): Float {
@@ -1197,12 +1232,6 @@ class SharedPreferencesSettingsRepository(
         }
     }
 
-    override fun isVulkanFastPathEnabled(): Flow<Boolean> {
-        return getOrCreatePreferenceSharedFlow("video_vulkan_fastpath_enabled") {
-            preferences.getBoolean("video_vulkan_fastpath_enabled", false)
-        }
-    }
-
     override fun isRendererDebugToolsEnabled(): Flow<Boolean> {
         return getOrCreatePreferenceSharedFlow("video_renderer_debug_tools_enabled") {
             preferences.getBoolean("video_renderer_debug_tools_enabled", false)
@@ -1271,6 +1300,14 @@ class SharedPreferencesSettingsRepository(
 
     override fun getFpsCounterPosition(): FpsCounterPosition {
         return getEnumPreference("fps_counter_position", FpsCounterPosition.HIDDEN)
+    }
+
+    override fun getRenderedIrPosition(): FpsCounterPosition {
+        return getEnumPreference("rendered_ir_position", FpsCounterPosition.HIDDEN)
+    }
+
+    override fun getVideoInternalResolutionScalingValue(): Int {
+        return preferences.getString("video_internal_resolution", "1")?.toIntOrNull() ?: 1
     }
 
     override fun getExternalDisplayMode(): ExternalDisplayMode {
@@ -1390,6 +1427,14 @@ class SharedPreferencesSettingsRepository(
 
     override fun isSoundEnabled(): Boolean {
         return preferences.getBoolean("sound_enabled", true)
+    }
+
+    override fun isMuteOnFastForwardEnabled(): Boolean {
+        return preferences.getBoolean("audio_mute_on_fast_forward", false)
+    }
+
+    override fun observeMuteOnFastForwardEnabled(): Flow<Boolean> {
+        return getOrCreatePreferenceSharedFlow("audio_mute_on_fast_forward") { isMuteOnFastForwardEnabled() }
     }
 
     private fun getRewindPeriod(): Int {

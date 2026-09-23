@@ -22,6 +22,23 @@
             app:iconSpaceReserved="false"
             android:defaultValue="true" />
 
+    <ListPreference
+            android:key="frameskip_mode"
+            android:title="@string/frameskip_mode"
+            android:summary="@string/frameskip_mode_summary"
+            app:iconSpaceReserved="false"
+            android:defaultValue="auto"
+            android:entries="@array/frameskip_mode_options"
+            android:entryValues="@array/frameskip_mode_values" />
+
+    <ListPreference
+            android:key="frameskip_manual_value"
+            android:title="@string/frameskip_manual_value"
+            app:iconSpaceReserved="false"
+            android:defaultValue="1"
+            android:entries="@array/frameskip_manual_value_options"
+            android:entryValues="@array/frameskip_manual_value_values" />
+
     <SwitchPreference
             android:key="save_internal_config_as_file"
             android:title="@string/save_internal_config_as_file"

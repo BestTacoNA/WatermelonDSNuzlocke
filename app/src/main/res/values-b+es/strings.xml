@@ -89,6 +89,7 @@
     <plurals name="video_retroarch_shader_browser_passes">
         <item quantity="one">%1$d pase</item>
         <item quantity="other">%1$d pases</item>
+        <item quantity="many">%1$d de pases</item>
     </plurals>
     <string name="video_retroarch_shader_settings_title">Configurar Shaders de RA</string>
     <string name="video_retroarch_shader_settings_summary">Biblioteca de shaders, parámetros del preset y el log de librashader</string>
@@ -113,7 +114,7 @@
     <string name="save_states_not_supported">Los estados de guardado no son compatibles mientras se ejecuta el firmware</string>
     <string name="rewind_now">AHORA</string>
     <string name="rewind_time_seconds">%1$ss</string> <!-- Ej: 43,56s -->
-    <string name="rewind_time_minutes_seconds">%1$dmin2$ss</string> <!-- Ej: 2min37,93s -->
+    <string name="rewind_time_minutes_seconds">%1$dmin%2$ss</string> <!-- Ej: 2min37,93s -->
     <string name="rewind_not_enabled">El rebobinado no está habilitado</string>
     <string name="rewind_unavailable_ra_hardcore_enabled">El rebobinado no disponible en modo Hardcore</string>
     <string name="no_image_selected">Ninguna imagen seleccionada</string>
@@ -591,6 +592,7 @@
     <plurals name="offline_ra_ledger_expires_days">
         <item quantity="one">%1$d día</item>
         <item quantity="other">%1$d días</item>
+        <item quantity="many">%1$d de días</item>
     </plurals>
 
     <string name="rom_browser_virtual_root">Todas las carpetas de ROM</string>

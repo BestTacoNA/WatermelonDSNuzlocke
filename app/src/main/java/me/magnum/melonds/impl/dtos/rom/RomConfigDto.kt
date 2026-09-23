@@ -4,6 +4,7 @@ import com.google.gson.annotations.SerializedName
 import me.magnum.melonds.domain.model.VideoFiltering
 import me.magnum.melonds.domain.model.VideoRenderer
 import me.magnum.melonds.domain.model.rom.config.RomConfig
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.domain.model.rom.config.RomInputMode
 import me.magnum.melonds.domain.model.rom.config.RuntimeConsoleType
 import me.magnum.melonds.domain.model.rom.config.RuntimeMicSource
@@ -41,6 +42,8 @@ data class RomConfigDto(
     val retroArchShaderParameters: String? = null,
     @SerializedName("retroAchievementsEnabled")
     val retroAchievementsEnabled: Boolean? = null,
+    @SerializedName("iconSource")
+    val iconSource: RomIconSource? = null,
 ) {
 
     companion object {
@@ -61,6 +64,7 @@ data class RomConfigDto(
                 romConfig.retroArchShaderPresetPath,
                 romConfig.retroArchShaderParameters,
                 romConfig.retroAchievementsEnabled,
+                romConfig.iconSource,
             )
         }
     }
@@ -82,6 +86,7 @@ data class RomConfigDto(
             retroArchShaderPresetPath = retroArchShaderPresetPath,
             retroArchShaderParameters = retroArchShaderParameters,
             retroAchievementsEnabled = retroAchievementsEnabled,
+            iconSource = iconSource ?: RomIconSource.DEFAULT,
         )
     }
 }

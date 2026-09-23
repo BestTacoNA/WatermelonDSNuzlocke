@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.content.edit
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,7 @@ import java.util.Locale
 
 internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+
         val pendingResult = goAsync()
         receiverScope.launch {
             try {
@@ -39,10 +41,9 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "Release state command failed: action=${intent.action}", error)
-            } finally {
-                pendingResult.finish()
             }
         }
+        pendingResult.finish()
     }
 
     private suspend fun handleIntent(context: Context, intent: Intent) {
@@ -66,7 +67,12 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             context.debugCommandAction(ACTION_SET_FAST_FORWARD_SUFFIX) -> handleSetFastForward(intent)
             context.debugCommandAction(ACTION_SET_FRAME_LIMIT_SPEED_SUFFIX) -> handleSetFrameLimitSpeed(entryPoint, intent)
             context.debugCommandAction(ACTION_SET_JIT_SUFFIX) -> handleSetJit(entryPoint, intent)
+            context.debugCommandAction(ACTION_SET_FRAMESKIP_SUFFIX) -> handleSetFrameskip(entryPoint, intent)
+            context.debugCommandAction(ACTION_SET_MUTE_ON_FAST_FORWARD_SUFFIX) -> handleSetMuteOnFastForward(entryPoint, intent)
             context.debugCommandAction(ACTION_GET_FPS_SUFFIX) -> handleGetFps()
+            context.debugCommandAction(ACTION_START_AUDIO_PCM_CAPTURE_SUFFIX) -> handleStartAudioPcmCapture(context, intent)
+            context.debugCommandAction(ACTION_DUMP_AUDIO_PCM_CAPTURE_SUFFIX) -> handleDumpAudioPcmCapture(context, intent)
+            context.debugCommandAction(ACTION_GRANT_AUDIO_PCM_CAPTURE_READ_SUFFIX) -> handleGrantAudioPcmCaptureRead(context, intent)
             context.debugCommandAction(ACTION_SET_BGOBJ_LOG_SUFFIX) -> handleSetBgObjLog(entryPoint, intent)
             context.debugCommandAction(ACTION_SET_RENDERER_2D_DEBUG_CONTROLS_SUFFIX) -> handleSetRenderer2DDebugControls(intent)
             context.debugCommandAction(ACTION_SET_RENDERER_3D_DEBUG_CONTROLS_SUFFIX) -> handleSetRenderer3DDebugControls(intent)
@@ -76,6 +82,9 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             context.debugCommandAction(ACTION_STEP_FRAME_SUFFIX) -> handleStepFrame(entryPoint, intent)
             context.debugCommandAction(ACTION_STEP_FRAMES_SUFFIX) -> handleStepFrame(entryPoint, intent)
             context.debugCommandAction(ACTION_DUMP_RENDERER_CAPTURE_SUFFIX) -> handleDumpRendererCapture(context, entryPoint, intent)
+            context.debugCommandAction(ACTION_ARM_EXACT_LIVE_GUIDE_SUFFIX) -> handleArmExactLiveGuide(intent)
+            context.debugCommandAction(ACTION_GET_EXACT_LIVE_GUIDE_SUFFIX) -> handleGetExactLiveGuide()
+            context.debugCommandAction(ACTION_ABORT_EXACT_LIVE_GUIDE_SUFFIX) -> handleAbortExactLiveGuide()
             context.debugCommandAction(ACTION_TOUCH_SCREEN_SUFFIX) -> handleTouchScreen(intent)
             context.debugCommandAction(ACTION_PRESS_INPUT_SUFFIX) -> handlePressInput(intent)
             context.debugCommandAction(ACTION_SET_INPUT_HELD_SUFFIX) -> handleSetInputHeld(intent)
@@ -94,18 +103,18 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             ?: throw IllegalArgumentException("Missing renderer extra")
         val renderer = parseRenderer(rendererName)
             ?: throw IllegalArgumentException("Unsupported renderer=$rendererName")
-        val fastPathEnabled = intent.firstBooleanExtra(EXTRA_FASTPATH_ENABLED, EXTRA_FASTPATH)
-        entryPoint.sharedPreferences().edit(commit = true) {
+        val preferences = entryPoint.sharedPreferences()
+        val legacyFastPathPreference =
+            preferences.getBoolean(KEY_VULKAN_FASTPATH_ENABLED, false)
+        val requestedLegacyFastPath =
+            intent.firstBooleanExtra(EXTRA_FASTPATH_ENABLED, EXTRA_FASTPATH)
+        preferences.edit(commit = true) {
             putString(KEY_VIDEO_RENDERER, renderer.name.lowercase(Locale.US))
-            fastPathEnabled?.let { putBoolean(KEY_VULKAN_FASTPATH_ENABLED, it) }
         }
         val refreshed = DebugCommandStateStore.requestSettingsRefresh()
-        val requestedProfile = fastPathEnabled?.let {
-            if (it) "fastpath" else "compatibility"
-        } ?: "unchanged"
         Log.w(
             TAG,
-            "action=set_renderer mode=release renderer=${renderer.name.lowercase(Locale.US)} profile=$requestedProfile fastPath=${fastPathEnabled?.let { if (it) 1 else 0 } ?: "unchanged"} applies=next_session refreshed=${if (refreshed) 1 else 0}",
+            "action=set_renderer mode=release renderer=${renderer.name.lowercase(Locale.US)} profile=faithful pipeline=simple_graphics raster=graphics legacyFastPathPreference=${if (legacyFastPathPreference) 1 else 0} legacyPreferenceIgnored=1 requestedLegacyFastPath=${requestedLegacyFastPath?.let { if (it) 1 else 0 } ?: "absent"} applies=next_session refreshed=${if (refreshed) 1 else 0}",
         )
     }
 
@@ -130,7 +139,7 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
     private fun handleSetInternalResolution(entryPoint: DebugCommandEntryPoint, intent: Intent) {
         val scale = intent.firstNullableIntExtra(EXTRA_SCALE, EXTRA_IR, EXTRA_VALUE)
             ?: throw IllegalArgumentException("Missing internal resolution extra")
-        require(scale in 1..8) { "Unsupported internal resolution=$scale" }
+        require(scale in 1..8 || scale == 12 || scale == 16) { "Unsupported internal resolution=$scale" }
         entryPoint.sharedPreferences().edit(commit = true) {
             putString(KEY_VIDEO_INTERNAL_RESOLUTION, scale.toString())
         }
@@ -208,8 +217,167 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         Log.w(TAG, "action=set_jit mode=release enabled=${if (enabled) 1 else 0} refreshed=${if (refreshed) 1 else 0}")
     }
 
+    private fun handleSetFrameskip(entryPoint: DebugCommandEntryPoint, intent: Intent) {
+        val mode = intent.firstStringExtra(EXTRA_MODE, EXTRA_VALUE)
+            ?: throw IllegalArgumentException("Missing mode extra")
+        require(mode in setOf("off", "manual", "auto")) { "Unknown frameskip mode $mode" }
+        val manualValue = intent.getIntExtra(EXTRA_MANUAL_VALUE, -1)
+        entryPoint.sharedPreferences().edit(commit = true) {
+            putString(KEY_FRAMESKIP_MODE, mode)
+            if (manualValue in 0..4) {
+                putString(KEY_FRAMESKIP_MANUAL_VALUE, manualValue.toString())
+            }
+        }
+        Log.w(TAG, "action=set_frameskip mode=release frameskipMode=$mode manualValue=$manualValue")
+    }
+
+    private fun handleSetMuteOnFastForward(entryPoint: DebugCommandEntryPoint, intent: Intent) {
+        val enabled = intent.firstBooleanExtra(EXTRA_ENABLED, EXTRA_VALUE)
+            ?: throw IllegalArgumentException("Missing enabled extra")
+        entryPoint.sharedPreferences().edit(commit = true) {
+            putBoolean(KEY_MUTE_ON_FAST_FORWARD, enabled)
+        }
+        Log.w(TAG, "action=set_mute_on_fast_forward mode=release enabled=${if (enabled) 1 else 0}")
+    }
+
     private fun handleGetFps() {
-        Log.w(TAG, "action=get_fps mode=release fps=${MelonEmulator.getFPS()}")
+        Log.w(TAG, "action=get_fps mode=release fps=${MelonEmulator.getFPS()} ${MelonEmulator.getVulkanFrameskipStats()}")
+    }
+
+    private fun handleStartAudioPcmCapture(context: Context, intent: Intent) {
+        val durationMs = intent.firstNullableIntExtra(EXTRA_DURATION_MS)
+            ?: DEFAULT_AUDIO_PCM_CAPTURE_DURATION_MS
+        require(durationMs in 1..MAX_AUDIO_PCM_CAPTURE_DURATION_MS) {
+            "Audio PCM capture duration out of range=$durationMs"
+        }
+        val captureId = sanitizeAudioCaptureId(
+            intent.firstStringExtra(EXTRA_CAPTURE_ID, EXTRA_CAPTURE_ID_BASE)
+                ?: throw IllegalArgumentException("Missing audio capture_id"),
+        )
+        requireAudioCaptureOutputAvailable(audioPcmCaptureOutputRoot(context), captureId)
+        val nativeResult = MelonEmulator.startAudioOutputPcmCapture(durationMs)
+        if (nativeAudioCaptureCommandSucceeded(nativeResult))
+            activeAudioPcmCaptureId = captureId
+        Log.w(
+            TAG,
+            "action=start_audio_pcm_capture mode=release captureId=$captureId durationMs=$durationMs nativeResult=$nativeResult",
+        )
+    }
+
+    private fun handleDumpAudioPcmCapture(context: Context, intent: Intent) {
+        val captureId = sanitizeAudioCaptureId(
+            intent.firstStringExtra(EXTRA_CAPTURE_ID, EXTRA_CAPTURE_ID_BASE)
+                ?: throw IllegalArgumentException("Missing audio capture_id"),
+        )
+        require(activeAudioPcmCaptureId == captureId) {
+            "Audio capture_id does not match armed capture expected=$activeAudioPcmCaptureId actual=$captureId"
+        }
+        val outputId = sanitizeAudioCaptureId(
+            intent.firstStringExtra(EXTRA_OUTPUT_ID) ?: captureId,
+        )
+        val outputRoot = audioPcmCaptureOutputRoot(context)
+        requireAudioCaptureOutputAvailable(outputRoot, outputId)
+        val finalDirectory = File(outputRoot, outputId)
+
+        val nativeResult = MelonEmulator.dumpAudioOutputPcmCapture(finalDirectory.absolutePath)
+        var grantedUris = "none"
+        if (nativeAudioCaptureCommandSucceeded(nativeResult)) {
+            activeAudioPcmCaptureId = null
+            grantedUris = grantAudioPcmCaptureReadAccess(context, finalDirectory)
+                .joinToString(separator = ",")
+        }
+        Log.w(
+            TAG,
+            "action=dump_audio_pcm_capture mode=release captureId=$captureId outputId=$outputId outputDir=${finalDirectory.absolutePath} grantedUris=$grantedUris nativeResult=$nativeResult",
+        )
+    }
+
+    private fun grantAudioPcmCaptureReadAccess(
+        context: Context,
+        outputDirectory: File,
+    ): List<Uri> {
+        val expectedFiles = listOf(
+            "audio.wav",
+            "callbacks.csv",
+            "spu-pretransport.wav",
+            "packets.csv",
+            "drains.csv",
+            "summary.json",
+        )
+            .map { name -> File(outputDirectory, name) }
+        require(expectedFiles.all { file -> file.isFile }) {
+            "Published audio capture is incomplete directory=${outputDirectory.absolutePath}"
+        }
+        return expectedFiles.map { file ->
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file,
+            )
+            context.grantUriPermission(
+                SHELL_PACKAGE_NAME,
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+            uri
+        }
+    }
+
+    private fun handleGrantAudioPcmCaptureRead(context: Context, intent: Intent) {
+        val outputId = sanitizeAudioCaptureId(
+            intent.firstStringExtra(EXTRA_OUTPUT_ID, EXTRA_CAPTURE_ID, EXTRA_CAPTURE_ID_BASE)
+                ?: throw IllegalArgumentException("Missing audio output_id"),
+        )
+        val outputDirectory = File(audioPcmCaptureOutputRoot(context), outputId)
+        require(outputDirectory.isDirectory) {
+            "Audio capture output does not exist outputId=$outputId"
+        }
+        val grantedUris = grantAudioPcmCaptureReadAccess(context, outputDirectory)
+            .joinToString(separator = ",")
+        Log.w(
+            TAG,
+            "action=grant_audio_pcm_capture_read mode=release outputId=$outputId grantedUris=$grantedUris",
+        )
+    }
+
+    private fun audioPcmCaptureOutputRoot(context: Context): File {
+        val outputRoot = context.getExternalFilesDir(AUDIO_PCM_CAPTURE_DIRECTORY)
+            ?: throw IllegalStateException("External files directory unavailable")
+        require(outputRoot.isDirectory || outputRoot.mkdirs()) {
+            "Could not create audio capture directory=${outputRoot.absolutePath}"
+        }
+        return outputRoot
+    }
+
+    private fun requireAudioCaptureOutputAvailable(outputRoot: File, outputId: String) {
+        val finalDirectory = File(outputRoot, outputId)
+        val stagingDirectory = File(outputRoot, "$outputId.partial")
+        require(!finalDirectory.exists() && !stagingDirectory.exists()) {
+            "Audio capture output already exists outputId=$outputId"
+        }
+    }
+
+    private fun sanitizeAudioCaptureId(value: String): String {
+        val sanitized = value
+            .take(MAX_AUDIO_PCM_CAPTURE_ID_LENGTH)
+            .map { character ->
+                if (character in 'a'..'z' || character in 'A'..'Z' ||
+                    character in '0'..'9' || character == '.' ||
+                    character == '_' || character == '-') {
+                    character
+                } else {
+                    '_'
+                }
+            }
+            .joinToString(separator = "")
+        require(sanitized.isNotBlank() && sanitized != "." && sanitized != "..") {
+            "Invalid audio capture id"
+        }
+        return sanitized
+    }
+
+    private fun nativeAudioCaptureCommandSucceeded(result: String?): Boolean {
+        return result?.startsWith("{\"success\":1,") == true
     }
 
     private fun handleSetBgObjLog(entryPoint: DebugCommandEntryPoint, intent: Intent) {
@@ -367,27 +535,30 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             ?: 5_000
         val renderer = entryPoint.settingsRepository().getCurrentVideoRenderer()
         val startFrame = RendererDebugBridge.getCurrentFrameIndexForDebug()
-        DebugCommandStateStore.setDebugPauseHeld(false)
-        MelonEmulator.resumeEmulation()
-        waitForRendererFrameOrTimeout(
-            renderer = renderer,
-            startFrame = startFrame,
-            resumeFrames = frames,
-            timeoutMs = timeoutMs.toLong(),
-        )
-        MelonEmulator.pauseEmulation()
-        waitForRendererReadyOrTimeout(
-            renderer = renderer,
-            minFrame = RendererDebugBridge.getCurrentFrameIndexForDebug(),
-            timeoutMs = timeoutMs.toLong(),
-        )
-        DebugCommandStateStore.setDebugPauseHeld(true)
+        require(frames <= 10_000) { "Frame step budget exceeds 10000" }
+        val expectedFrame = Math.addExact(startFrame, frames)
+        try {
+
+            check(MelonEmulator.debugStepFrames(frames)) { "Exact frame step was not accepted" }
+            waitForRendererFrameOrTimeout(
+                renderer = renderer,
+                startFrame = startFrame,
+                resumeFrames = frames,
+                timeoutMs = timeoutMs.toLong(),
+            )
+        } finally {
+
+            MelonEmulator.pauseEmulation()
+            DebugCommandStateStore.setDebugPauseHeld(true)
+        }
         val endFrame = RendererDebugBridge.getCurrentFrameIndexForDebug()
         val ready = renderer != VideoRenderer.VULKAN || RendererDebugBridge.isCurrentFrameReadyForDebug()
+        val exact = ready && endFrame == expectedFrame
         Log.w(
             TAG,
-            "action=step_frame mode=release renderer=${renderer.name.lowercase(Locale.US)} frames=$frames startFrame=$startFrame endFrame=$endFrame ready=${if (ready) 1 else 0}",
+            "action=step_frame mode=release exactBudget=1 renderer=${renderer.name.lowercase(Locale.US)} frames=$frames startFrame=$startFrame expectedFrame=$expectedFrame endFrame=$endFrame ready=${if (ready) 1 else 0} exact=${if (exact) 1 else 0}",
         )
+        check(exact) { "Exact step incomplete: expected=$expectedFrame actual=$endFrame ready=$ready" }
     }
 
     private fun stepRendererDebugForwardFrameIfPaused(reason: String) {
@@ -417,13 +588,18 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         }
 
         val renderer = entryPoint.settingsRepository().getCurrentVideoRenderer()
+
+        val keepDarkBurst = intent.firstStringExtra(EXTRA_CAPTURE_KINDS, EXTRA_KINDS)?.contains("keepdark", ignoreCase = true) == true
         val burstCount = intent.firstNullableIntExtra(EXTRA_BURST_COUNT, EXTRA_CAPTURE_COUNT)
-            ?.coerceIn(1, 600)
+            ?.coerceIn(1, if (keepDarkBurst) 60_000 else 600)
             ?: 1
         val burstLive = intent.firstBooleanExtra(EXTRA_BURST_LIVE, EXTRA_LIVE_BURST) ?: (burstCount > 1)
         val burstStepFrames = intent.firstNullableIntExtra(EXTRA_BURST_STEP_FRAMES, EXTRA_STEP_FRAMES)
             ?.coerceAtLeast(1)
             ?: 1
+
+        val burstFfToggleAt = intent.getIntExtra(EXTRA_BURST_FF_TOGGLE_AT, -1)
+        val burstFfToggleEnabled = intent.getBooleanExtra(EXTRA_BURST_FF_TOGGLE_ENABLED, false)
         val timeoutMs = intent.firstNullableIntExtra(EXTRA_TIMEOUT_MS)
             ?.coerceAtLeast(1)
             ?.toLong()
@@ -476,6 +652,15 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
                     warmupFrames = resumeFrames,
                     onCaptureArmed = if (resumeFrames > 0 || resumeMs <= 0) {
                         resumeAfterCaptureArmed
+                    } else {
+                        null
+                    },
+                    burstHookAtFrame = burstFfToggleAt,
+                    onBurstFrame = if (burstFfToggleAt >= 0) {
+                        {
+                            MelonEmulator.setFastForwardEnabled(burstFfToggleEnabled)
+                            Log.w(TAG, "action=set_fast_forward mode=release enabled=${if (burstFfToggleEnabled) 1 else 0} source=burst_hook")
+                        }
                     } else {
                         null
                     },
@@ -545,6 +730,34 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         MelonEmulator.onInputUp(Input.TOUCHSCREEN)
         MelonEmulator.onScreenRelease()
         Log.w(TAG, "action=touch_screen mode=release x=$x y=$y durationMs=$durationMs")
+    }
+
+    private fun handleArmExactLiveGuide(intent: Intent) {
+        val anchorFrame = intent.firstNullableIntExtra(EXTRA_ANCHOR_FRAME)?.toLong() ?: -1L
+        val x = intent.firstNullableIntExtra(EXTRA_X, EXTRA_VALUE_X, EXTRA_VALUE)
+            ?.coerceIn(0, 255)
+            ?: DEFAULT_TOUCH_X
+        val y = intent.firstNullableIntExtra(EXTRA_Y, EXTRA_VALUE_Y)
+            ?.coerceIn(0, 191)
+            ?: DEFAULT_TOUCH_Y
+        val status = MelonEmulator.armExactLiveGuide(anchorFrame, x, y)
+            ?: "{\"state\":\"jni_error\"}"
+        Log.w(
+            TAG,
+            "action=arm_exact_live_guide mode=release anchorFrame=$anchorFrame x=$x y=$y status=$status",
+        )
+    }
+
+    private fun handleGetExactLiveGuide() {
+        val status = MelonEmulator.getExactLiveGuideStatus()
+            ?: "{\"state\":\"jni_error\"}"
+        Log.w(TAG, "action=get_exact_live_guide mode=release status=$status")
+    }
+
+    private fun handleAbortExactLiveGuide() {
+        val status = MelonEmulator.abortExactLiveGuide()
+            ?: "{\"state\":\"jni_error\"}"
+        Log.w(TAG, "action=abort_exact_live_guide mode=release status=$status")
     }
 
     private suspend fun handleLaunchRom(context: Context, intent: Intent) {
@@ -1088,9 +1301,12 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
                         parsed.add(RendererDebugCaptureKind.CAPTURE_FALLBACK_MASK)
                     "softpackedmeta", "softpackedframemeta", "soft_packed_frame_meta", "softpackedframejson" ->
                         parsed.add(RendererDebugCaptureKind.SOFT_PACKED_FRAME_META_JSON)
+                    "faithfulpayload", "faithfuldiagnosticpayload", "faithful_diagnostic_payload" ->
+                        parsed.add(RendererDebugCaptureKind.FAITHFUL_DIAGNOSTIC_PAYLOAD)
                     "composited", "compositedframe", "composited_frame", "vulkancomposited", "vulkan_composited_frame" ->
                         parsed.add(RendererDebugCaptureKind.COMPOSITED_FRAME)
                     "renderer3d", "3d", "renderer3dframe" -> parsed.add(RendererDebugCaptureKind.RENDERER3D_FRAME)
+                    "keepdark", "negros" -> parsed.add(RendererDebugCaptureKind.KEEP_DARK)
                     "capture3d", "3dcapture", "renderer3dcapture", "renderer3dcaptureframe" ->
                         parsed.add(RendererDebugCaptureKind.RENDERER3D_CAPTURE_FRAME)
                     "depth", "renderer3ddepth" -> parsed.add(RendererDebugCaptureKind.RENDERER3D_DEPTH)
@@ -1110,6 +1326,11 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val KEY_VIDEO_INTERNAL_RESOLUTION = "video_internal_resolution"
         private const val KEY_FRAME_LIMIT_SPEED_MULTIPLIER = "frame_limit_speed_multiplier"
         private const val KEY_ENABLE_JIT = "enable_jit"
+        private const val KEY_FRAMESKIP_MODE = "frameskip_mode"
+        private const val KEY_FRAMESKIP_MANUAL_VALUE = "frameskip_manual_value"
+        private const val KEY_MUTE_ON_FAST_FORWARD = "audio_mute_on_fast_forward"
+        private const val EXTRA_MODE = "mode"
+        private const val EXTRA_MANUAL_VALUE = "manual_value"
         private const val KEY_RENDERER_DEBUG_BGOBJ_ENABLED = "video_renderer_debug_bgobj_enabled"
         private const val KEY_RENDERER_DEBUG_LATCH_TRACE_ENABLED =
             "video_renderer_debug_latch_trace_enabled"
@@ -1135,6 +1356,7 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val EXTRA_SPEED = "speed"
         private const val EXTRA_X = "x"
         private const val EXTRA_Y = "y"
+        private const val EXTRA_ANCHOR_FRAME = "anchor_frame"
         private const val EXTRA_VALUE_X = "value_x"
         private const val EXTRA_VALUE_Y = "value_y"
         private const val EXTRA_DURATION_MS = "duration_ms"
@@ -1166,7 +1388,10 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val EXTRA_KINDS = "kinds"
         private const val EXTRA_CAPTURE_ID = "capture_id"
         private const val EXTRA_CAPTURE_ID_BASE = "capture_id_base"
+        private const val EXTRA_OUTPUT_ID = "output_id"
         private const val EXTRA_BURST_COUNT = "burst_count"
+        private const val EXTRA_BURST_FF_TOGGLE_AT = "burst_ff_toggle_at"
+        private const val EXTRA_BURST_FF_TOGGLE_ENABLED = "burst_ff_toggle_enabled"
         private const val EXTRA_CAPTURE_COUNT = "capture_count"
         private const val EXTRA_BURST_STEP_FRAMES = "burst_step_frames"
         private const val EXTRA_TIMEOUT_MS = "timeout_ms"
@@ -1215,8 +1440,14 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val DEFAULT_TOUCH_DURATION_MS = 80
         private const val DEFAULT_INPUT_DURATION_MS = 80
         private const val DEFAULT_INPUT_GAP_MS = 80
+        private const val DEFAULT_AUDIO_PCM_CAPTURE_DURATION_MS = 20_000
+        private const val MAX_AUDIO_PCM_CAPTURE_DURATION_MS = 60_000
+        private const val MAX_AUDIO_PCM_CAPTURE_ID_LENGTH = 80
+        private const val AUDIO_PCM_CAPTURE_DIRECTORY = "audio-pcm-captures"
+        private const val SHELL_PACKAGE_NAME = "com.android.shell"
 
         private val receiverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private var activeAudioPcmCaptureId: String? = null
 
         private const val ACTION_SET_RENDERER_SUFFIX = "SET_RENDERER"
         private const val ACTION_SET_RENDERER_DEBUG_TOOLS_SUFFIX = "SET_RENDERER_DEBUG_TOOLS"
@@ -1226,7 +1457,12 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val ACTION_SET_FAST_FORWARD_SUFFIX = "SET_FAST_FORWARD"
         private const val ACTION_SET_FRAME_LIMIT_SPEED_SUFFIX = "SET_FRAME_LIMIT_SPEED"
         private const val ACTION_SET_JIT_SUFFIX = "SET_JIT"
+        private const val ACTION_SET_FRAMESKIP_SUFFIX = "SET_FRAMESKIP"
+        private const val ACTION_SET_MUTE_ON_FAST_FORWARD_SUFFIX = "SET_MUTE_ON_FAST_FORWARD"
         private const val ACTION_GET_FPS_SUFFIX = "GET_FPS"
+        private const val ACTION_START_AUDIO_PCM_CAPTURE_SUFFIX = "START_AUDIO_PCM_CAPTURE"
+        private const val ACTION_DUMP_AUDIO_PCM_CAPTURE_SUFFIX = "DUMP_AUDIO_PCM_CAPTURE"
+        private const val ACTION_GRANT_AUDIO_PCM_CAPTURE_READ_SUFFIX = "GRANT_AUDIO_PCM_CAPTURE_READ"
         private const val ACTION_SET_BGOBJ_LOG_SUFFIX = "SET_BGOBJ_LOG"
         private const val ACTION_SET_RENDERER_2D_DEBUG_CONTROLS_SUFFIX = "SET_RENDERER_2D_DEBUG_CONTROLS"
         private const val ACTION_SET_RENDERER_3D_DEBUG_CONTROLS_SUFFIX = "SET_RENDERER_3D_DEBUG_CONTROLS"
@@ -1236,6 +1472,9 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
         private const val ACTION_STEP_FRAME_SUFFIX = "STEP_FRAME"
         private const val ACTION_STEP_FRAMES_SUFFIX = "STEP_FRAMES"
         private const val ACTION_DUMP_RENDERER_CAPTURE_SUFFIX = "DUMP_RENDERER_CAPTURE"
+        private const val ACTION_ARM_EXACT_LIVE_GUIDE_SUFFIX = "ARM_EXACT_LIVE_GUIDE"
+        private const val ACTION_GET_EXACT_LIVE_GUIDE_SUFFIX = "GET_EXACT_LIVE_GUIDE"
+        private const val ACTION_ABORT_EXACT_LIVE_GUIDE_SUFFIX = "ABORT_EXACT_LIVE_GUIDE"
         private const val ACTION_TOUCH_SCREEN_SUFFIX = "TOUCH_SCREEN"
         private const val ACTION_PRESS_INPUT_SUFFIX = "PRESS_INPUT"
         private const val ACTION_SET_INPUT_HELD_SUFFIX = "SET_INPUT_HELD"
@@ -1257,7 +1496,12 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             || action == context.debugCommandAction(ACTION_SET_FAST_FORWARD_SUFFIX)
             || action == context.debugCommandAction(ACTION_SET_FRAME_LIMIT_SPEED_SUFFIX)
             || action == context.debugCommandAction(ACTION_SET_JIT_SUFFIX)
+            || action == context.debugCommandAction(ACTION_SET_FRAMESKIP_SUFFIX)
+            || action == context.debugCommandAction(ACTION_SET_MUTE_ON_FAST_FORWARD_SUFFIX)
             || action == context.debugCommandAction(ACTION_GET_FPS_SUFFIX)
+            || action == context.debugCommandAction(ACTION_START_AUDIO_PCM_CAPTURE_SUFFIX)
+            || action == context.debugCommandAction(ACTION_DUMP_AUDIO_PCM_CAPTURE_SUFFIX)
+            || action == context.debugCommandAction(ACTION_GRANT_AUDIO_PCM_CAPTURE_READ_SUFFIX)
             || action == context.debugCommandAction(ACTION_SET_BGOBJ_LOG_SUFFIX)
             || action == context.debugCommandAction(ACTION_SET_RENDERER_2D_DEBUG_CONTROLS_SUFFIX)
             || action == context.debugCommandAction(ACTION_SET_RENDERER_3D_DEBUG_CONTROLS_SUFFIX)
@@ -1267,5 +1511,8 @@ internal class ReleaseStateCommandReceiver : BroadcastReceiver() {
             || action == context.debugCommandAction(ACTION_STEP_FRAME_SUFFIX)
             || action == context.debugCommandAction(ACTION_STEP_FRAMES_SUFFIX)
             || action == context.debugCommandAction(ACTION_DUMP_RENDERER_CAPTURE_SUFFIX)
+            || action == context.debugCommandAction(ACTION_ARM_EXACT_LIVE_GUIDE_SUFFIX)
+            || action == context.debugCommandAction(ACTION_GET_EXACT_LIVE_GUIDE_SUFFIX)
+            || action == context.debugCommandAction(ACTION_ABORT_EXACT_LIVE_GUIDE_SUFFIX)
     }
 }

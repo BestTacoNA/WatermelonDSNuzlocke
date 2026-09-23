@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import me.magnum.melonds.R
 import me.magnum.melonds.domain.model.ConsoleType
 import me.magnum.melonds.domain.model.rom.Rom
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.impl.RomSaveFileManager
 import me.magnum.melonds.ui.common.rom.EmulatorLaunchValidatorDelegate
 import me.magnum.melonds.ui.emulator.EmulatorActivity
@@ -78,12 +79,16 @@ class RomDetailsActivity : AppCompatActivity() {
                     crumb = rom.name,
                 )
                 else -> {
-                    val boxArtUrl by produceState<String?>(initialValue = null, rom.uri) {
-                        value = runCatching { boxArtRepository.getBoxArtUrl(rom) }.getOrNull()
+                    val raCoverUrl by romDetailsViewModel.raCoverUrl.collectAsState()
+                    val boxArtUrl by produceState<String?>(initialValue = null, rom.uri, rom.config.iconSource) {
+                        value = if (rom.config.iconSource == RomIconSource.DEFAULT) {
+                            runCatching { boxArtRepository.getBoxArtUrl(rom) }.getOrNull()
+                        } else null
                     }
                     me.magnum.melonds.ui.common.ExternalLibraryGameInfo(
                         rom = rom,
                         boxArtUrl = boxArtUrl,
+                        raCoverUrl = raCoverUrl,
                     )
                 }
             }
@@ -122,12 +127,15 @@ class RomDetailsActivity : AppCompatActivity() {
         setContent {
             val rom by romDetailsViewModel.rom.collectAsState()
             val romConfig by romDetailsViewModel.romConfigUiState.collectAsState()
+            val raCoverUrl by romDetailsViewModel.raCoverUrl.collectAsState()
 
             val retroAchievementsUiState by romRetroAchievementsViewModel.uiState.collectAsState()
             val offlineAchievementsUiState by romRetroAchievementsViewModel.offlineAchievementsUiState.collectAsState()
 
-            val boxArtUrl by produceState<String?>(initialValue = null, rom.uri) {
-                value = runCatching { boxArtRepository.getBoxArtUrl(rom) }.getOrNull()
+            val boxArtUrl by produceState<String?>(initialValue = null, rom.uri, rom.config.iconSource) {
+                value = if (rom.config.iconSource == RomIconSource.DEFAULT) {
+                    runCatching { boxArtRepository.getBoxArtUrl(rom) }.getOrNull()
+                } else null
             }
 
             LaunchedEffect(null) {
@@ -173,7 +181,7 @@ class RomDetailsActivity : AppCompatActivity() {
                 RomDetailsScreen(
                     rom = rom,
                     boxArtUrl = boxArtUrl,
-                    raCoverUrl = null,
+                    raCoverUrl = raCoverUrl,
                     romConfigUiState = romConfig,
                     retroAchievementsUiState = retroAchievementsUiState,
                     offlineAchievementsUiState = offlineAchievementsUiState,

@@ -38,7 +38,6 @@ constexpr const char* kRequiredDeviceExtensions[] = {
 };
 
 constexpr const char* kTimelineSemaphoreExtension = VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME;
-constexpr const char* kDescriptorIndexingExtension = VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
 constexpr const char* kOptionalExternalMemoryExtension = VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME;
 constexpr const char* kOptionalAndroidHardwareBufferExtension = VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME;
 std::atomic<bool> gForceDisableTimelineSemaphores{false};
@@ -218,13 +217,9 @@ bool hasRequiredDeviceExtensions(VkInstance instance, VkPhysicalDevice physicalD
     VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{};
     timelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
 
-    VkPhysicalDeviceDescriptorIndexingFeatures descriptorFeatures{};
-    descriptorFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
-    descriptorFeatures.pNext = &timelineFeatures;
-
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features2.pNext = &descriptorFeatures;
+    features2.pNext = &timelineFeatures;
     auto getPhysicalDeviceFeatures2 = reinterpret_cast<PFN_vkGetPhysicalDeviceFeatures2>(
         vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceFeatures2"));
     if (getPhysicalDeviceFeatures2 == nullptr)
@@ -269,27 +264,6 @@ bool hasRequiredDeviceExtensions(VkInstance instance, VkPhysicalDevice physicalD
                 properties.deviceName
             );
         }
-    }
-
-    if (dynamicTextureIndexingAvailable
-        && descriptorFeatures.shaderSampledImageArrayNonUniformIndexing != VK_TRUE)
-    {
-        melonDS::Platform::Log(
-            melonDS::Platform::LogLevel::Warn,
-            "MelonDSAndroidInterface: device '%s' missing feature shaderSampledImageArrayNonUniformIndexing; compatibility texture path will be used",
-            properties.deviceName
-        );
-    }
-    else if (dynamicTextureIndexingAvailable
-        && !apiAtLeast12
-        && !hasExtension(kDescriptorIndexingExtension, extensions))
-    {
-        melonDS::Platform::Log(
-            melonDS::Platform::LogLevel::Warn,
-            "MelonDSAndroidInterface: device '%s' missing extension %s; compatibility texture path will be used",
-            properties.deviceName,
-            kDescriptorIndexingExtension
-        );
     }
 
     return true;
@@ -415,8 +389,7 @@ bool isVulkanRendererSupported()
     return result;
 }
 
-bool canInitializeVulkanRenderer(
-    melonDS::VulkanPipelineProfile pipelineProfile)
+bool canInitializeVulkanRenderer()
 {
     constexpr u64 kQuickValidationWaitTimeoutNs = 1'000'000'000ull;
     if (!isVulkanRendererSupported())
@@ -428,8 +401,7 @@ bool canInitializeVulkanRenderer(
         return false;
     }
 
-    MelonDSAndroid::VulkanOutput vulkanOutput(
-        pipelineProfile);
+    MelonDSAndroid::VulkanOutput vulkanOutput;
     if (!vulkanOutput.init())
     {
         melonDS::Platform::Log(melonDS::Platform::LogLevel::Error, "canInitializeVulkanRenderer: VulkanOutput::init failed");
@@ -455,14 +427,14 @@ bool canInitializeVulkanRenderer(
     return true;
 }
 
-void setVulkanCompatibilityOverrides(bool disableTimelineSemaphores, bool disableDynamicTextureIndexing)
+void setVulkanCapabilityOverrides(bool disableTimelineSemaphores, bool disableDynamicTextureIndexing)
 {
     gForceDisableTimelineSemaphores.store(disableTimelineSemaphores, std::memory_order_relaxed);
     gForceDisableDynamicTextureIndexing.store(disableDynamicTextureIndexing, std::memory_order_relaxed);
-    melonDS::VulkanContext::SetCompatibilityOverrides(disableTimelineSemaphores, disableDynamicTextureIndexing);
+    melonDS::VulkanContext::SetCapabilityOverrides(disableTimelineSemaphores, disableDynamicTextureIndexing);
     melonDS::Platform::Log(
         melonDS::Platform::LogLevel::Warn,
-        "MelonDSAndroidInterface: Vulkan compatibility overrides updated (timelineOff=%d dynamicIndexingOff=%d)",
+        "MelonDSAndroidInterface: Vulkan capability overrides updated (timelineOff=%d dynamicIndexingOff=%d)",
         disableTimelineSemaphores ? 1 : 0,
         disableDynamicTextureIndexing ? 1 : 0
     );
@@ -544,28 +516,23 @@ Java_me_magnum_melonds_MelonDSAndroidInterface_getRendererCapabilities(JNIEnv* e
 }
 
 JNIEXPORT jboolean JNICALL
-Java_me_magnum_melonds_MelonDSAndroidInterface_canInitializeVulkanRendererForProfileNative(
+Java_me_magnum_melonds_MelonDSAndroidInterface_canInitializeVulkanRendererNative(
     JNIEnv* env,
-    jobject thiz,
-    jboolean fastPathEnabled)
+    jobject thiz)
 {
-    const melonDS::VulkanPipelineProfile pipelineProfile =
-        fastPathEnabled == JNI_TRUE
-        ? melonDS::VulkanPipelineProfile::FastPath
-        : melonDS::VulkanPipelineProfile::Compatibility;
-    return canInitializeVulkanRenderer(pipelineProfile)
+    return canInitializeVulkanRenderer()
         ? JNI_TRUE
         : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_me_magnum_melonds_MelonDSAndroidInterface_setVulkanCompatibilityOverridesNative(
+Java_me_magnum_melonds_MelonDSAndroidInterface_setVulkanCapabilityOverridesNative(
     JNIEnv* env,
     jobject thiz,
     jboolean disableTimelineSemaphores,
     jboolean disableDynamicTextureIndexing)
 {
-    setVulkanCompatibilityOverrides(
+    setVulkanCapabilityOverrides(
         disableTimelineSemaphores == JNI_TRUE,
         disableDynamicTextureIndexing == JNI_TRUE
     );

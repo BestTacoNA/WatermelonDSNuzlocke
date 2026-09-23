@@ -3,6 +3,7 @@ package me.magnum.melonds.common.romprocessors
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.isActive
 import me.magnum.melonds.common.uridelegates.UriHandler
 import me.magnum.melonds.domain.model.RomInfo
@@ -13,7 +14,9 @@ import me.magnum.melonds.domain.model.rom.config.RomConfig
 import me.magnum.melonds.extensions.isBlank
 import me.magnum.melonds.extensions.nameWithoutExtension
 import me.magnum.melonds.impl.NdsRomCache
+import me.magnum.melonds.R
 import me.magnum.melonds.utils.RomProcessor
+import org.apache.commons.compress.MemoryLimitException
 import java.io.FileOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
@@ -30,6 +33,7 @@ abstract class CompressedRomFileProcessor(private val context: Context, private 
     private class CouldNotFindExtractedFileException : RomExtractionException("Failed to find extracted NDS ROM file")
 
     private companion object {
+        const val TAG = "CompressedRomFileProcessor"
         val SUPPORTED_ROM_EXTENSIONS = listOf("nds", "dsi", "ids")
     }
 
@@ -54,6 +58,27 @@ abstract class CompressedRomFileProcessor(private val context: Context, private 
                     }
                 }
             }
+        } catch (e: MemoryLimitException) {
+
+            val romDocument = uriHandler.getUriDocument(romUri)
+            val fileName = romDocument?.name ?: romUri.toString()
+            Log.w(TAG, "7z memory limit exceeded: file=$fileName needed=${e.memoryNeededInKb} KB limit=${e.memoryLimitInKb} KB")
+            Rom(
+                name = romDocument?.nameWithoutExtension ?: fileName,
+                developerName = "",
+                fileName = romDocument?.name ?: "",
+                uri = romUri,
+                parentTreeUri = parentUri,
+                config = RomConfig.default(),
+                lastPlayed = null,
+                isDsiWareTitle = false,
+                retroAchievementsHash = "",
+                unsupportedReason = context.getString(
+                    R.string.rom_7z_memory_limit,
+                    e.memoryNeededInKb / 1024,
+                    e.memoryLimitInKb / 1024,
+                ),
+            )
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -65,6 +90,9 @@ abstract class CompressedRomFileProcessor(private val context: Context, private 
             getBestRomInputStream(rom)?.use {
                 RomProcessor.getRomIcon(it)
             }
+        } catch (e: MemoryLimitException) {
+            Log.w(TAG, "7z memory limit exceeded (icon): file=${rom.fileName} needed=${e.memoryNeededInKb} KB limit=${e.memoryLimitInKb} KB")
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -76,6 +104,9 @@ abstract class CompressedRomFileProcessor(private val context: Context, private 
             getBestRomInputStream(rom)?.use {
                 RomProcessor.getRomInfo(rom, it)
             }
+        } catch (e: MemoryLimitException) {
+            Log.w(TAG, "7z memory limit exceeded (info): file=${rom.fileName} needed=${e.memoryNeededInKb} KB limit=${e.memoryLimitInKb} KB")
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null

@@ -765,6 +765,9 @@
         <item>Compute</item>
     </string-array>
 
+    <string name="video_internal_resolution_12x">12倍原生（3072x2304）</string>
+    <string name="video_internal_resolution_16x">16倍原生（4096x3072）</string>
+
     <string-array name="video_internal_resolution_options">
         <item>1倍原生（256x192）</item>
         <item>2倍原生（512x384）</item>
@@ -774,6 +777,8 @@
         <item>6倍原生（1536x1152）</item>
         <item>7倍原生（1792x1344）</item>
         <item>8倍原生（2048x1536）</item>
+        <item>@string/video_internal_resolution_12x</item>
+        <item>@string/video_internal_resolution_16x</item>
     </string-array>
 
     <string-array name="video_filtering_options">
@@ -867,5 +872,255 @@
         <item>左侧</item>
         <item>底部</item>
         <item>右侧</item>
+    </string-array>
+    <string name="dsiware_manager_import_title_error_title_limit_reached">DSi 菜单中已有 39 个启动项。安装此项目前，请先删除另一个项目。</string>
+    <string name="dsiware_manager_import_title_error_dsi_memory_full">DSi 系统内存已满。安装此项目前，请先删除另一个 DSiWare 项目。</string>
+    <string name="info_retroarch_compiling_wait">正在编译 RetroArch 着色器……画面将保持静止，复杂预设可能需要几分钟</string>
+    <string name="video_retroarch_shader_browser_up">返回</string>
+    <string name="video_retroarch_shader_browser_empty">此处为空</string>
+    <string name="video_retroarch_shader_browser_slow">较慢</string>
+    <plurals name="video_retroarch_shader_browser_passes">
+        <item quantity="one">%1$d 遍</item>
+        <item quantity="other">%1$d 遍</item>
+    </plurals>
+    <string name="video_retroarch_shader_settings_title">配置 RA 着色器</string>
+    <string name="video_retroarch_shader_settings_summary">着色器库、预设参数以及 librashader 日志</string>
+    <string name="shader_heavy_compile_title">此预设编译较慢</string>
+    <string name="shader_heavy_compile_estimated">%1$s 首次编译大约需要 %2$s。画面在完成前将保持静止。</string>
+    <string name="shader_heavy_compile_measured">%1$s 上次编译耗时 %2$s。画面在完成前将保持静止。</string>
+    <string name="shader_heavy_compile_continue">开始编译</string>
+    <string name="shader_heavy_compile_skip">不使用滤镜游玩</string>
+    <string name="shader_duration_minutes">%1$d 分 %2$d 秒</string>
+    <string name="shader_duration_seconds">%1$d 秒</string>
+    <string name="rewind_now">现在</string>
+    <string name="delete_bios_paths">删除 BIOS 路径</string>
+    <string name="rom_action_send_save_file">发送存档文件</string>
+    <string name="rom_action_import_save_file">导入存档文件</string>
+    <string name="rom_save_file_share_chooser">发送存档文件</string>
+    <string name="rom_save_file_missing">未找到此游戏的存档文件。</string>
+    <string name="rom_save_file_share_failed">无法分享存档文件。</string>
+    <string name="rom_save_file_import_title">导入存档文件？</string>
+    <string name="rom_save_file_import_message">此文件将替换 %1$s 的存档文件。如果它不是此游戏的存档，可能无法正常使用。</string>
+    <string name="rom_save_file_import_invalid">此文件看起来不是可导入的 DS 存档文件。</string>
+    <string name="rom_save_file_import_success">存档文件已导入。</string>
+    <string name="rom_save_file_import_failed">无法导入存档文件。</string>
+    <string name="rom_all_games">所有游戏</string>
+    <string name="pause_resume">继续</string>
+    <string name="pause_paused_label">已暂停</string>
+    <string name="pause_confirm_reset_title">重置主机？</string>
+    <string name="pause_confirm_reset_message">未保存的进度将丢失。游戏将从头开始重新启动。</string>
+    <string name="pause_confirm_exit_title">退出游戏？</string>
+    <string name="pause_confirm_exit_message">未保存的进度将丢失。</string>
+    <string name="pause_hint_navigate">导航</string>
+    <string name="pause_hint_accept">确认</string>
+    <string name="pause_hint_resume">继续</string>
+    <string name="pause_hint_back">返回</string>
+    <string name="app_brand_watermelon" translatable="false">Watermelon</string>
+    <string name="app_brand_ds" translatable="false">DS</string>
+    <string name="external_hint_open">打开</string>
+    <string name="external_hint_favorite">收藏</string>
+    <string name="save_state_slot_quick">快速</string>
+    <string name="save_state_slot_number">存档位 %1$d</string>
+    <string name="save_state_empty_slot">空存档位</string>
+    <string name="cheats_footer_note">金手指将在继续游戏时生效 · 硬核模式下不可用</string>
+    <string name="external_choose_on_device">在设备上选择</string>
+    <string name="rom_sort_recent_chip">最近</string>
+    <string name="rom_sort_most_played_chip">最常玩</string>
+    <string name="rom_games_count">%1$d 个游戏</string>
+    <string name="system_dldi_sd_card_enabled">启用 DLDI / 自制软件 SD 卡</string>
+    <string name="system_dldi_sd_card_enabled_summary">为 DLDI 自制软件挂载虚拟 SD 卡。ZXDS 等应用需要此功能。</string>
+    <string name="system_dldi_sd_card_dir">DLDI SD 卡文件夹</string>
+    <string name="system_dldi_sd_card_image_size">DLDI SD 镜像大小</string>
+    <string name="system_disable_touch_gestures_on_touch_screen_area">在触摸屏区域禁用触控手势</string>
+    <string name="system_disable_touch_gestures_on_touch_screen_area_summary">防止游戏过程中 Android 系统手势在 DS 触摸屏区域被触发。如果你使用返回手势打开游戏内菜单，请保持关闭。</string>
+    <string name="system_ignore_display_cutout_in_layouts">在布局中忽略屏幕缺口</string>
+    <string name="system_ignore_display_cutout_in_layouts_summary">允许模拟器布局使用刘海或摄像头挖孔区域。更改此设置后，请重启布局编辑器或模拟器。</string>
+    <string name="video_vulkan_driver_category">Vulkan 驱动</string>
+    <string name="video_vulkan_driver_mode">Adreno Vulkan 驱动</string>
+    <string name="video_vulkan_driver_import">导入自定义驱动</string>
+    <string name="video_vulkan_driver_import_summary">安装驱动压缩包。更改将在下次启动游戏时生效。</string>
+    <string name="video_vulkan_driver_remove">移除自定义驱动</string>
+    <string name="video_vulkan_driver_remove_summary">删除已安装的自定义驱动。</string>
+    <string name="video_vulkan_driver_unsupported">自定义驱动仅适用于配备 Adreno GPU、运行 Android 9 及以上系统的设备，并且需要 GitHub arm64 版本。</string>
+    <string name="video_vulkan_driver_no_custom">选择此选项前，请先导入自定义驱动。</string>
+    <string name="video_vulkan_driver_active_system">正在使用 Android 系统 Vulkan 驱动。</string>
+    <string name="video_vulkan_driver_active_custom">Vulkan 启动时将使用 %1$s。</string>
+    <string name="video_vulkan_driver_import_success">已安装 Vulkan 驱动：%1$s。</string>
+    <string name="video_vulkan_driver_import_failed">无法导入 Vulkan 驱动压缩包。</string>
+    <string name="video_vulkan_driver_import_not_zip">请选择 .zip 驱动包。</string>
+    <string name="video_vulkan_driver_import_no_driver">该压缩包不包含受支持的 Vulkan 驱动库。</string>
+    <string name="video_vulkan_driver_import_ambiguous">该压缩包包含多个 Vulkan 驱动库。请使用仅含单个驱动的压缩包。</string>
+    <string name="video_vulkan_driver_removed">已移除 Vulkan 驱动：%1$s。</string>
+    <string name="video_vulkan_driver_mode_system">Android 系统驱动</string>
+    <string name="video_vulkan_driver_mode_options_custom_fallback">自定义驱动</string>
+    <string name="external_display_mode">外接显示模式</string>
+    <string name="enable_retroachievements">启用 RetroAchievements</string>
+    <string name="enable_retroachievements_summary">保持账号登录状态，但在禁用时跳过成就运行与资料活动</string>
+    <string name="ra_offline_backend_title">离线成就提供方</string>
+    <string name="ra_offline_backend_summary">选择内置的 WatermelonDS 提供方或 RAOfflineProxy</string>
+    <string name="ra_offline_backend_built_in">WatermelonDS 内置</string>
+    <string name="ra_offline_backend_proxy">RAOfflineProxy</string>
+    <string name="ra_offline_proxy_active_summary">RAOfflineProxy 当前处于活动状态。更改提供方后，请重启当前游戏会话。</string>
+    <string name="ra_offline_proxy_not_active">已选择 RAOfflineProxy，但其未处于活动状态。启动游戏前，请先启动 RAOfflineProxy。</string>
+    <string name="ra_offline_proxy_hardcore_not_supported">RAOfflineProxy 不支持硬核模式。</string>
+    <string name="ra_offline_proxy_restart_required">RetroAchievements 提供方已更改。请重启此游戏会话，以使更改一致生效。</string>
+    <string name="version_rc">RC</string>
+    <string name="update_channel_title">更新渠道</string>
+    <string name="update_channel_stable">稳定版</string>
+    <string name="update_channel_prerelease">稳定版与预发布版</string>
+    <string name="hybrid_screen">混合屏幕</string>
+    <string name="input_hold_fast_forward">快进（长按）</string>
+    <string name="label_position">位置</string>
+    <string name="dual_screen_presets_disabled_hint">预设已禁用。选择一个预设以启用下方选项。</string>
+    <string name="retroachievements_logout_confirmation_in_game">在游戏运行时退出登录，将永久丢弃本次会话中所有待提交的 RetroAchievements 成就与排行榜记录，随后游戏将关闭。切换为其他用户登录后，将无法再提交这些记录。是否继续？</string>
+    <string name="retroachievements_account_change_blocked_in_game">当前游戏会话的 RetroAchievements 身份已固定。请先关闭游戏，再退出登录或切换其他用户登录。</string>
+    <string name="retroachievements_account_changed_in_game">RetroAchievements 账号与当前游戏会话不再匹配。提交功能仍处于暂停状态，并绑定于原账号；请先关闭游戏，再更改账号。</string>
+    <string name="retroachievements_logout_failed">RetroAchievements 退出登录未能完成。为保护提交身份，游戏已关闭。</string>
+    <string name="label_rom_config_retroachievements">RetroAchievements</string>
+    <string name="label_rom_config_retroachievements_for_rom">此 ROM 的 RetroAchievements</string>
+    <string name="retro_achievements_global_enabled">使用全局设置（已启用）</string>
+    <string name="retro_achievements_global_disabled">使用全局设置（已禁用）</string>
+    <string name="retro_achievements_enabled">已启用</string>
+    <string name="retro_achievements_disabled">已禁用</string>
+    <string name="retro_achievements_enabled_global_disabled">全局设置开启时启用</string>
+    <string name="retro_achievements_filter_missable">可能错过</string>
+    <string name="retro_achievements_leaderboards">排行榜</string>
+    <string name="leaderboard_view_ranking">查看排名</string>
+    <string name="leaderboard_open_on_ra">在 RetroAchievements 上打开</string>
+    <string name="leaderboard_ranking_load_failed">无法加载此排行榜排名。</string>
+    <string name="leaderboard_ranking_empty">暂无排行榜记录。</string>
+    <string name="leaderboard_total_entries">%1$d 条记录</string>
+    <string name="offline_ra_pending_message_with_expiration">你有 %1$d 个待同步的离线解锁记录。是否在联网游玩前立即同步？记录将在 %2$s 后过期，请在过期前联网，以免丢失这些记录。</string>
+    <string name="offline_ra_sync_skipped_server_rejected_toast">%1$s 无法被授予。原因：%2$s。</string>
+    <string name="offline_ra_sync_skipped_server_rejected_unknown_reason">RetroAchievements 拒绝了此次解锁</string>
+    <string name="offline_ra_pending_softcore_notice_with_expiration">待同步记录：%1$d 个。请在 %2$s 内同步，以免丢失。</string>
+    <string name="offline_ra_pending_softcore_expired_notice">待同步记录：%1$d 个。此离线记录已过期，无法再同步。</string>
+    <string name="offline_ra_ledger_expiration">记录过期时间：%1$s</string>
+    <string name="offline_ra_ledger_expired">已过期</string>
+    <plurals name="offline_ra_ledger_expires_days">
+        <item quantity="one">%1$d 天</item>
+        <item quantity="other">%1$d 天</item>
+    </plurals>
+    <string name="ra_pending_sync_menu">同步 RetroAchievements</string>
+    <string name="ra_pending_sync_menu_count">同步 RetroAchievements（%1$d）</string>
+    <string name="ra_pending_exit_title">RetroAchievements 提交内容需要同步</string>
+    <string name="ra_pending_exit_message">你有 %1$d 项待提交内容：\n%2$d 个成就\n%3$d 条排行榜分数\n\n现在关闭将丢弃尚未被接受的提交内容。</string>
+    <string name="ra_pending_sync_and_exit">同步并退出</string>
+    <string name="ra_pending_discard_and_exit">放弃并退出</string>
+    <string name="ra_pending_syncing_title">正在同步 RetroAchievements</string>
+    <string name="ra_pending_syncing_message">正在同步 %1$d 项内容：\n%2$d 个成就\n%3$d 条排行榜分数</string>
+    <string name="ra_pending_sync_result_title">RetroAchievements 同步结果</string>
+    <string name="ra_pending_sync_result_message">已同步 %1$d 个成就和 %2$d 条排行榜分数。已被接受：%3$d 项。\n\n失败：%4$d 个成就和 %5$d 条排行榜分数。\n剩余：%6$d 项。\n服务器永久拒绝：%7$d 项。</string>
+    <string name="ra_pending_state_verification_failed">无法验证待提交的 RetroAchievements 内容。游戏将保持打开状态。</string>
+    <string name="ra_pending_review_submissions">查看待提交内容</string>
+    <string name="ra_pending_process_loss_notification_message">来自 %4$s 的 %1$d 项硬核提交内容（%2$d 个成就，%3$d 条排行榜分数）可能未能同步，因为实时会话在本地确认服务器接受之前已结束。</string>
+    <string name="offline_ra_mode_softcore_offline_hardcore_disabled">已启用软核离线模式。硬核离线模式已禁用。</string>
+    <string name="ra_welcome_eyebrow">RETROACHIEVEMENTS</string>
+    <string name="ra_welcome_title">欢迎，%1$s！</string>
+    <string name="ra_welcome_hardcore">硬核模式</string>
+    <string name="ra_welcome_softcore">软核模式</string>
+    <string name="ra_now_playing">正在游玩</string>
+    <string name="ra_achievements_progress">%1$d / %2$d 个成就</string>
+    <string name="ra_no_achievements">此游戏没有成就</string>
+    <string name="ra_profile_hardcore_points">%1$s 硬核积分</string>
+    <string name="ra_profile_casual_points">%1$s 休闲积分</string>
+    <string name="challenge_completed">挑战完成</string>
+    <string name="challenge_failed">挑战失败</string>
+    <string name="leaderboard_attempt_failed">排行榜提交失败</string>
+    <string name="leaderboard_attempt_value">%1$s：%2$s</string>
+    <string name="leaderboard_attempt_time_label">时间</string>
+    <string name="leaderboard_attempt_score_label">分数</string>
+    <string name="leaderboard_attempt_value_label">数值</string>
+    <string name="leaderboard_submission_success">排行榜已提交</string>
+    <string name="leaderboard_submission_pending">正在提交排行榜……</string>
+    <string name="leaderboard_generic_title">排行榜 #%1$d</string>
+    <string name="leaderboard_submission_failed">排行榜提交失败</string>
+    <string name="achievement_submission_failed">成就提交失败</string>
+    <string name="ra_submission_retry_background">在后台重试期间可继续游戏</string>
+    <string name="ra_submission_not_retrying">此次尝试无法再重试</string>
+    <string name="leaderboard_best_score">个人最佳：%1$s</string>
+    <string-array name="dldi_sd_card_image_size_options">
+        <item>自动</item>
+        <item>256 MB</item>
+        <item>512 MB</item>
+        <item>1 GB</item>
+        <item>2 GB</item>
+        <item>4 GB</item>
+    </string-array>
+    <string-array name="video_vulkan_driver_mode_options">
+        <item>系统</item>
+        <item>自定义</item>
+    </string-array>
+    <string name="video_retroarch_shader_source_title">着色器来源</string>
+    <string name="video_retroarch_shader_source_internal">安装到内部存储（推荐）</string>
+    <string name="video_retroarch_shader_source_internal_description">下载官方 libretro 着色器（约 53 MB）。无需文件夹权限。</string>
+    <string name="video_retroarch_shader_source_folder">选择文件夹</string>
+    <string name="video_retroarch_shader_source_folder_description">选择一个你已下载的 slang-shaders 文件夹。</string>
+    <string name="video_retroarch_shader_install_title">安装着色器</string>
+    <string name="video_retroarch_shader_install_summary">从 libretro 下载约 53 MB</string>
+    <string name="video_retroarch_shader_install_notification_title">RetroArch 着色器</string>
+    <string name="video_retroarch_shader_installed_title">着色器已安装</string>
+    <string name="video_retroarch_shader_installed_summary">更新于 %1$s · %2$s</string>
+    <string name="video_retroarch_shader_check_updates">检查更新</string>
+    <string name="video_retroarch_shader_checking_updates">正在检查更新……</string>
+    <string name="video_retroarch_shader_update_available">有可用更新。是否立即下载？</string>
+    <string name="video_retroarch_shader_up_to_date">着色器已是最新版本。</string>
+    <string name="video_retroarch_shader_reinstall">重新安装</string>
+    <string name="video_retroarch_shader_uninstall">卸载</string>
+    <string name="video_retroarch_shader_uninstall_confirm">删除已安装的着色器并释放 %1$s？</string>
+    <string name="video_retroarch_shader_downloading">正在下载着色器</string>
+    <string name="video_retroarch_shader_extracting">正在解压着色器</string>
+    <string name="video_retroarch_shader_finalizing">正在完成</string>
+    <string name="video_retroarch_shader_waiting_network">正在等待网络连接</string>
+    <string name="video_retroarch_shader_progress_bytes">%1$s / %2$s</string>
+    <string name="video_retroarch_shader_error_network">无法下载着色器。请检查网络连接后重试。</string>
+    <string name="video_retroarch_shader_error_space">存储空间不足，需要释放约 %1$s 的空间。</string>
+    <string name="video_retroarch_shader_error_corrupt">下载已完成，但压缩包已损坏。请重试。</string>
+    <string name="video_retroarch_shader_retry">重试</string>
+    <string name="shader_compatibility_preset_failed">着色器“%1$s”无法使用：%2$s</string>
+    <string name="shader_compatibility_report_title">libraShader 快速日志</string>
+    <string name="shader_compatibility_report_summary">显示最新的 librashader 日志。保存会将 librashader.log 写入你的 ROM 文件夹。</string>
+    <string name="shader_compatibility_report_empty">尚未尝试过任何预设。请选择一个预设并启动游戏。</string>
+    <string name="shader_compatibility_report_save">另存为 librashader.log</string>
+    <string name="shader_compatibility_report_saved">已保存至 %1$s</string>
+    <string name="shader_compatibility_report_save_failed">无法将 librashader.log 写入 ROM 文件夹。</string>
+    <string name="shader_compatibility_report_no_rom_folder">未配置可保存的 ROM 文件夹。</string>
+    <string name="shader_compatibility_report_clear">清除</string>
+    <string-array name="external_display_mode_options">
+        <item>镜像</item>
+        <item>WatermelonDS</item>
+    </string-array>
+    <string name="rom_ndz_unsupported_legacy">旧版 .ndz 格式（LZ4 或平铺格式）。请使用 ndz-studio（zstd）重新打包。</string>
+    <string name="rom_ndz_unsupported_trained_dict">此 .ndz 使用已停用的训练字典格式。请使用 ndz-studio 重新打包。</string>
+    <string name="rom_ndz_unsupported_base_patch">此 .ndz 是基于原始 ROM 的补丁（.delta.ndz），目前尚不支持。</string>
+    <string name="rom_ndz_unsupported_pair">此 .ndz 容器包含多个 ROM，目前尚不支持。</string>
+    <string name="rom_ndz_unsupported_corrupt">.ndz 文件已损坏或不完整。</string>
+    <string name="rom_7z_memory_limit">7z 字典大小为 %1$d MB，此设备最多支持 %2$d MB。请使用较小的字典重新压缩，或解压 ROM。</string>
+    <string name="frameskip_mode">跳帧</string>
+    <string name="frameskip_mode_summary">%s。仅适用于 Vulkan 渲染器。游戏在两个屏幕之间交替渲染 3D 画面时，实际显示帧率会更低。</string>
+    <string name="frameskip_manual_value">跳过的帧数</string>
+    <string name="video_vulkan_category">Vulkan 高级设置</string>
+    <string name="rendered_ir_position">显示实际渲染分辨率</string>
+    <string name="info_rendered_ir">IR %1$dx / %2$dx</string>
+    <string name="video_vulkan_drs">动态内部分辨率</string>
+    <string name="video_vulkan_drs_summary">以选定的内部分辨率为目标，在高负载时降低渲染分辨率，以维持稳定的 60 fps。启用时会关闭跳帧。</string>
+    <string name="frameskip_mode_disabled_by_drs">动态分辨率已启用。若要使用跳帧，请先在视频设置中关闭动态内部分辨率。</string>
+    <string name="audio_mute_on_fast_forward">快进时静音</string>
+    <string name="audio_mute_on_fast_forward_summary">快进期间不播放声音</string>
+    <string name="achievements_failed_load_tip_response_too_large">无法加载成就：服务器返回的此游戏数据超过了应用的大小限制（16 MiB）。</string>
+    <string name="rom_icon_source">游戏图标</string>
+    <string name="rom_icon_source_native">DS/DSi 原生图标</string>
+    <string name="rom_icon_source_retro_achievements">RetroAchievements 图标</string>
+    <string-array name="frameskip_mode_options">
+        <item>关闭</item>
+        <item>手动</item>
+        <item>自动</item>
+    </string-array>
+    <string-array name="frameskip_manual_value_options">
+        <item>0（不跳帧）</item>
+        <item>1（渲染 1 帧，跳过 1 帧）</item>
+        <item>2（渲染 1 帧，跳过 2 帧）</item>
+        <item>3（渲染 1 帧，跳过 3 帧）</item>
+        <item>4（渲染 1 帧，跳过 4 帧）</item>
     </string-array>
 </resources>

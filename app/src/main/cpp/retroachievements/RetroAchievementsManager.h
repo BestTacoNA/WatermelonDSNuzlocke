@@ -2,8 +2,11 @@
 #define RETROACHIEVEMENTSMANAGER_H
 
 #include <atomic>
+#include <condition_variable>
 #include <list>
+#include <memory>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,6 +26,11 @@ namespace MelonDSAndroid
 {
 namespace RetroAchievements
 {
+
+class RcClientHttpSession;
+struct RcClientBootstrapAttempt;
+struct RcClientHttpCompletion;
+struct RcClientServerCallbackMetadata;
 
 enum class RANativePendingSubmissionType : int32_t
 {
@@ -60,11 +68,22 @@ public:
     RetroAchievementsManager(melonDS::NDS* nds);
     ~RetroAchievementsManager();
     static void SetJavaVm(JavaVM* javaVm);
+    bool SetupRuntime(
+        std::list<RAAchievement> achievements,
+        std::list<RALeaderboard> leaderboards,
+        std::optional<std::string> richPresenceScript,
+        std::optional<RARuntimeBridgeConfig> runtimeBridgeConfig
+    );
+    void Close();
+    void ServiceBootstrapFromEmulationThread();
     void ConfigureRuntimeBridge(std::optional<RARuntimeBridgeConfig> runtimeBridgeConfig);
     bool LoadAchievements(std::list<RAAchievement> achievements);
     bool LoadLeaderboards(std::list<RALeaderboard> leaderboards);
     bool ActivatePreferredRuntime();
     void UnloadEverything();
+
+    enum SetupFailureReason : int { None = 0, ResponseTooLarge = 1 };
+    int GetLastSetupFailureReason() const { return lastSetupFailureReason.load(std::memory_order_acquire); }
     void SetupRichPresence(std::string richPresenceScript);
     std::string GetRichPresenceStatus();
     std::vector<RARuntimeAchievement> GetRuntimeAchievements();
@@ -97,8 +116,16 @@ private:
         RcClientOffline,
     };
 
-    bool TryActivateRcClientRuntimeLocked();
-    void DeactivateRcClientRuntimeLocked();
+    bool ActivatePreferredRuntimeInternal(uint64_t expectedSetupInvalidationGeneration);
+    void UnloadEverythingInternal();
+    std::shared_ptr<RcClientHttpSession> DeactivateRcClientRuntimeLocked();
+    void DrainRcClientHttpCompletionsLocked();
+    void ProcessRcClientHttpCompletionLocked(RcClientHttpCompletion&& completion);
+    bool QueueRcClientHttpRequestLocked(
+        const rc_api_request_t* request,
+        RcClientServerCallbackMetadata metadata
+    );
+    void NotifyBootstrapServiceNeeded() const;
     void ResetRcClientPerformanceWindowLocked();
     std::string BuildRcClientLoginResponse() const;
     std::string BuildRcClientResolveHashResponse() const;
@@ -135,6 +162,7 @@ private:
         bool hardcore = false;
         bool presentationReady = false;
         bool published = false;
+        uint64_t activeTransportRequestId = 0;
         std::string formattedScore;
         PendingSubmissionStatus status = PendingSubmissionStatus::InFlight;
         std::optional<int32_t> permanentFailureResult;
@@ -146,7 +174,8 @@ private:
         const std::string& requestAction,
         const rc_api_request_t* request,
         uintptr_t callbackDataToken,
-        std::optional<uint64_t> leaderboardAttemptId
+        std::optional<uint64_t> leaderboardAttemptId,
+        uint64_t transportRequestId
     );
     void MarkPendingSubmissionPresentationReady(
         RANativePendingSubmissionType type,
@@ -158,7 +187,8 @@ private:
     void FinalizePendingSubmissionTransport(
         uintptr_t callbackDataToken,
         bool retryPending,
-        bool alreadyAccepted
+        bool alreadyAccepted,
+        uint64_t transportRequestId
     );
     void MaybePublishPendingSubmission(PendingSubmissionState& submission);
     bool IsPendingSubmissionPublishable(const PendingSubmissionState& submission) const;
@@ -213,6 +243,20 @@ private:
     melonDS::NDS* nds;
     rc_client_t* rcClientRuntime;
     std::mutex runtimeLock;
+    std::mutex runtimeSetupLock;
+    std::atomic<int> lastSetupFailureReason{SetupFailureReason::None};
+    std::condition_variable submissionResolutionCondition;
+    bool runtimeClosing = false;
+
+    bool managerClosed = false;
+
+    std::atomic<uint64_t> setupInvalidationGeneration{0};
+    bool bootstrapInProgress = false;
+    uint64_t runtimeGeneration = 0;
+    std::shared_ptr<RcClientHttpSession> rcClientHttpSession;
+    std::shared_ptr<RcClientBootstrapAttempt> activeBootstrapAttempt;
+
+    std::vector<std::shared_ptr<RcClientBootstrapAttempt>> bootstrapAttempts;
 
     std::list<RAAchievement> loadedAchievements;
     std::list<RALeaderboard> loadedLeaderboards;
@@ -242,7 +286,7 @@ private:
     uint64_t nextPendingSubmissionBarrierId = 1;
     std::atomic<bool> submissionTransportSuspended{false};
 
-    static JavaVM* javaVm;
+    static std::atomic<JavaVM*> javaVm;
 };
 
 }

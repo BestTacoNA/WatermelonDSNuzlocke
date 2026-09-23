@@ -11,3 +11,6 @@
 [submodule "app/src/main/cpp/enet"]
 	path = app/src/main/cpp/enet
 	url = https://github.com/lsalzman/enet.git
+[submodule "app/src/main/cpp/zstd"]
+	path = app/src/main/cpp/zstd
+	url = https://github.com/facebook/zstd.git

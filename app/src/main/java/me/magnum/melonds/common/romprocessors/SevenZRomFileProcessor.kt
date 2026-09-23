@@ -18,9 +18,11 @@ class SevenZRomFileProcessor(private val context: Context, uriHandler: UriHandle
         private const val TAG = "SevenZRomProcessor"
         private const val MIN_MEMORY_LIMIT_KB = 1024L
 
-        internal fun calculateMaxMemoryLimitKb(deviceMemoryBytes: Long, maxHeapBytes: Long): Int {
+        private const val HEAP_HEADROOM_BYTES = 48L * 1024 * 1024
+
+        internal fun calculateMaxMemoryLimitKb(deviceMemoryBytes: Long, maxHeapBytes: Long, usedHeapBytes: Long): Int {
             val deviceMemoryLimitBytes = (deviceMemoryBytes * 0.1f).toLong()
-            val heapMemoryLimitBytes = maxHeapBytes / 3
+            val heapMemoryLimitBytes = maxHeapBytes - usedHeapBytes - HEAP_HEADROOM_BYTES
             val memoryLimitBytes = minOf(deviceMemoryLimitBytes, heapMemoryLimitBytes)
                 .coerceAtLeast(MIN_MEMORY_LIMIT_KB * 1024)
 
@@ -35,10 +37,17 @@ class SevenZRomFileProcessor(private val context: Context, uriHandler: UriHandle
             return null
         }
 
+        val runtime = Runtime.getRuntime()
+
+        System.gc()
+        val maxHeapBytes = runtime.maxMemory()
+        val usedHeapBytes = runtime.totalMemory() - runtime.freeMemory()
         val maxMemoryLimitKb = calculateMaxMemoryLimitKb(
             deviceMemoryBytes = getDeviceMemoryBytes(),
-            maxHeapBytes = Runtime.getRuntime().maxMemory()
+            maxHeapBytes = maxHeapBytes,
+            usedHeapBytes = usedHeapBytes
         )
+        Log.i(TAG, "7z memory limit: ${maxMemoryLimitKb} KB (heap max ${maxHeapBytes / 1024} KB, used ${usedHeapBytes / 1024} KB)")
 
         val sevenZFile = SevenZFile.Builder()
             .setMaxMemoryLimitKb(maxMemoryLimitKb)

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import me.magnum.melonds.domain.model.rom.Rom
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.ui.theme.SpaceGrotesk
 import me.magnum.melonds.ui.theme.WatermelonMono
 import kotlin.math.absoluteValue
@@ -181,11 +182,13 @@ fun WatermelonRomArt(
     val context = LocalContext.current
     var boxArtFailed by remember(rom.uri, boxArtUrl) { mutableStateOf(false) }
     var raFailed by remember(rom.uri, raCoverUrl) { mutableStateOf(false) }
-    var artLoaded by remember(rom.uri, boxArtUrl, raCoverUrl) { mutableStateOf(false) }
+    var artLoaded by remember(rom.uri, boxArtUrl, raCoverUrl, rom.config.iconSource) { mutableStateOf(false) }
+
+    val inheritArtwork = rom.config.iconSource == RomIconSource.DEFAULT
 
     val activeUrl = when {
-        boxArtUrl != null && !boxArtFailed -> boxArtUrl
-        raCoverUrl != null && !raFailed -> raCoverUrl
+        inheritArtwork && boxArtUrl != null && !boxArtFailed -> boxArtUrl
+        rom.config.iconSource != RomIconSource.NATIVE && raCoverUrl != null && !raFailed -> raCoverUrl
         else -> null
     }
 
@@ -201,7 +204,7 @@ fun WatermelonRomArt(
                 modifier = Modifier.align(Alignment.Center),
             )
             if (activeUrl == null) {
-                if (boxArtLoading) {
+                if (inheritArtwork && boxArtLoading) {
                     androidx.compose.material.CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center).size(22.dp),
                         color = Color.White.copy(alpha = 0.85f),
@@ -211,7 +214,7 @@ fun WatermelonRomArt(
                     AsyncImage(
                         model = romIconRequest(context, rom),
                         contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
+                        contentScale = if (inheritArtwork) ContentScale.FillBounds else ContentScale.Fit,
                         filterQuality = FilterQuality.None,
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -245,7 +248,7 @@ fun WatermelonRomArt(
                     )
                     .build(),
                 contentDescription = title,
-                contentScale = contentScale,
+                contentScale = if (inheritArtwork) contentScale else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }

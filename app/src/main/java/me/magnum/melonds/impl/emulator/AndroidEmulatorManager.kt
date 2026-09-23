@@ -19,6 +19,7 @@ import me.magnum.melonds.MelonEmulator
 import me.magnum.melonds.common.PermissionHandler
 import me.magnum.melonds.common.romprocessors.RomFileProcessorFactory
 import me.magnum.melonds.common.runtime.ScreenshotFrameBufferProvider
+import me.magnum.melonds.domain.model.FrameskipConfiguration
 import me.magnum.melonds.domain.model.Cheat
 import me.magnum.melonds.domain.model.ConsoleType
 import me.magnum.melonds.domain.model.EmulatorConfiguration
@@ -66,7 +67,14 @@ class AndroidEmulatorManager(
         private const val PowerOff = 4
     }
 
-    private class RetroAchievementsSetupException : RuntimeException("RetroAchievements runtime setup failed")
+    class RetroAchievementsSetupException(val reason: Int) : RuntimeException("RetroAchievements runtime setup failed (reason=$reason)") {
+
+        val isResponseTooLarge get() = reason == REASON_RESPONSE_TOO_LARGE
+
+        companion object {
+            const val REASON_RESPONSE_TOO_LARGE = 1
+        }
+    }
     private data class InstalledDsiWareShortcutSession(
         val titleId: Long,
         val titleIdHex: String,
@@ -588,7 +596,7 @@ class AndroidEmulatorManager(
                 runtimeConfig = runtimeConfig,
             )
             if (!setupSucceeded) {
-                throw RetroAchievementsSetupException()
+                throw RetroAchievementsSetupException(MelonEmulator.getRetroAchievementsSetupFailureReason())
             }
         }
     }
@@ -619,6 +627,22 @@ class AndroidEmulatorManager(
                 expectedNativeSubmissionIds.toLongArray(),
             )
         }
+    }
+
+    override fun setFrameskipConfiguration(configuration: FrameskipConfiguration) {
+        MelonEmulator.setFrameskipMode(configuration.mode.nativeValue, configuration.manualValue)
+    }
+
+    override fun setVulkanDrsEnabled(enabled: Boolean) {
+        MelonEmulator.setVulkanDrsEnabled(enabled)
+    }
+
+    override fun setMuteOnFastForward(enabled: Boolean) {
+        MelonEmulator.setMuteOnFastForward(enabled)
+    }
+
+    override fun getVulkanRenderedInternalResolution(): Int {
+        return MelonEmulator.getVulkanRenderedInternalResolution()
     }
 
     override suspend fun setRetroAchievementsSubmissionTransportSuspended(suspended: Boolean) {

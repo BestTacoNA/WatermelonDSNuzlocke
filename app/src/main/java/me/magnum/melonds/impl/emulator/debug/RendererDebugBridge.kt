@@ -18,6 +18,8 @@ internal object RendererDebugBridge {
     const val DENSE_CAPTURE_CAPTURE_LINE_MASK = 1 shl 9
     const val DENSE_CAPTURE_SOFT_PACKED_META = 1 shl 10
     const val DENSE_CAPTURE_RENDERER3D_FRAME = 1 shl 11
+
+    const val DENSE_CAPTURE_KEEP_DARK = 1 shl 12
     const val RENDERER_2D_DEBUG_FEATURE_STATIC_BACKGROUND = 1 shl 0
     const val RENDERER_2D_DEBUG_FEATURE_AFFINE_BACKGROUND = 1 shl 1
     const val RENDERER_2D_DEBUG_FEATURE_AFFINE_EXTENDED_TILED_BACKGROUND = 1 shl 2
@@ -128,6 +130,8 @@ internal object RendererDebugBridge {
     external fun captureCurrentSoftPackedFrameMetaJson(): String?
     external fun captureCurrentCompositedDimensions(): IntArray?
     external fun captureCurrentCompositedFrame(): IntArray?
+
+    external fun captureFaithfulDiagnosticPayload(expectedFrameId: Long): IntArray?
     external fun isCurrentFrameReadyForDebug(): Boolean
     external fun getCurrentFrameIndexForDebug(): Int
     external fun requestPreparedRendererSnapshot()

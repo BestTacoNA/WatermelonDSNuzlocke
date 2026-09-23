@@ -16,7 +16,11 @@
                 <action android:name="${applicationId}.SET_FAST_FORWARD" />
                 <action android:name="${applicationId}.SET_FRAME_LIMIT_SPEED" />
                 <action android:name="${applicationId}.SET_JIT" />
+                <action android:name="${applicationId}.SET_FRAMESKIP" />
                 <action android:name="${applicationId}.GET_FPS" />
+                <action android:name="${applicationId}.START_AUDIO_PCM_CAPTURE" />
+                <action android:name="${applicationId}.DUMP_AUDIO_PCM_CAPTURE" />
+                <action android:name="${applicationId}.GRANT_AUDIO_PCM_CAPTURE_READ" />
                 <action android:name="${applicationId}.SET_BGOBJ_LOG" />
                 <action android:name="${applicationId}.SET_RENDERER_2D_DEBUG_CONTROLS" />
                 <action android:name="${applicationId}.SET_RENDERER_3D_DEBUG_CONTROLS" />
@@ -26,6 +30,9 @@
                 <action android:name="${applicationId}.STEP_FRAME" />
                 <action android:name="${applicationId}.STEP_FRAMES" />
                 <action android:name="${applicationId}.DUMP_RENDERER_CAPTURE" />
+                <action android:name="${applicationId}.ARM_EXACT_LIVE_GUIDE" />
+                <action android:name="${applicationId}.GET_EXACT_LIVE_GUIDE" />
+                <action android:name="${applicationId}.ABORT_EXACT_LIVE_GUIDE" />
                 <action android:name="${applicationId}.TOUCH_SCREEN" />
                 <action android:name="${applicationId}.PRESS_INPUT" />
                 <action android:name="${applicationId}.SET_INPUT_HELD" />

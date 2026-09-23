@@ -5,6 +5,7 @@ import android.os.Parcelable
 import me.magnum.melonds.domain.model.VideoFiltering
 import me.magnum.melonds.domain.model.VideoRenderer
 import me.magnum.melonds.domain.model.rom.config.RomConfig
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.domain.model.rom.config.RomInputMode
 import me.magnum.melonds.domain.model.rom.config.RuntimeConsoleType
 import me.magnum.melonds.domain.model.rom.config.RuntimeMicSource
@@ -34,6 +35,7 @@ class RomConfigParcelable : Parcelable {
             videoFiltering = parcel.readNullableEnum(VideoFiltering.entries),
             retroArchShaderPresetPath = parcel.readString(),
             retroArchShaderParameters = parcel.readString(),
+            iconSource = parcel.readNullableEnum(RomIconSource.entries) ?: RomIconSource.DEFAULT,
         )
     }
 
@@ -52,6 +54,7 @@ class RomConfigParcelable : Parcelable {
         dest.writeNullableEnum(romConfig.videoFiltering)
         dest.writeString(romConfig.retroArchShaderPresetPath)
         dest.writeString(romConfig.retroArchShaderParameters)
+        dest.writeNullableEnum(romConfig.iconSource)
     }
 
     override fun describeContents(): Int {

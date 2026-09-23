@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <mutex>
+#include <vector>
 #include "PerformanceHintManager.h"
 
 class ThreadSafePerformanceHintSession
@@ -10,6 +11,9 @@ class ThreadSafePerformanceHintSession
 public:
     explicit ThreadSafePerformanceHintSession(std::unique_ptr<PerformanceHintManager> manager);
     void createSession(pid_t threadId, int64_t targetDurationNs);
+
+    void registerThread(pid_t threadId, int64_t targetDurationNs);
+    bool isActive();
     void reportActualWorkDuration(int64_t actualDurationNs);
     void updateTargetWorkDuration(int64_t targetDurationNs);
     void destroySession();
@@ -17,6 +21,7 @@ public:
 private:
     std::unique_ptr<PerformanceHintManager> manager;
     std::mutex sessionMutex;
+    std::vector<pid_t> threadIds;
     bool sessionActive = false;
 };
 

@@ -3,4 +3,7 @@
     <cache-path
         name="shared_save_files"
         path="shared_saves/" />
+    <external-files-path
+        name="audio_pcm_captures"
+        path="audio-pcm-captures/" />
 </paths>

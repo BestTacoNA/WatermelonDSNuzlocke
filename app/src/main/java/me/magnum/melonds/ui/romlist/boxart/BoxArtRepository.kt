@@ -28,13 +28,14 @@ class BoxArtRepository @Inject constructor(
 
     private val cacheDir = File(context.filesDir, "boxart").apply { mkdirs() }
     private val indexFile = File(cacheDir, "named_boxarts_index.txt")
-    private val matchesFile = File(cacheDir, "matches.json")
+
+    private val matchesFile = File(cacheDir, "matches_v2.json")
 
     private val mutex = Mutex()
     private var indexEntries: List<IndexEntry>? = null
     private var matches: JSONObject? = null
 
-    private data class IndexEntry(val encodedName: String, val normalized: String, val tokens: Set<String>)
+    private data class IndexEntry(val encodedName: String, val fullNormalized: String, val normalized: String, val tokens: Set<String>)
 
     suspend fun getBoxArtUrl(rom: Rom): String? = withContext(Dispatchers.IO) {
         val key = rom.uri.toString()
@@ -87,9 +88,10 @@ class BoxArtRepository @Inject constructor(
             .filter { it.isNotBlank() }
             .map { encoded ->
                 val decoded = runCatching { URLDecoder.decode(encoded, "UTF-8") }.getOrDefault(encoded)
-                val cleanName = decoded.removeSuffix(".png").substringBefore(" (")
+                val fullName = decoded.removeSuffix(".png")
+                val cleanName = fullName.substringBefore(" (")
                 val normalized = normalize(cleanName)
-                IndexEntry(encoded, normalized, normalized.split(' ').filter { it.isNotEmpty() }.toSet())
+                IndexEntry(encoded, normalize(fullName, stripQualifiers = false), normalized, normalized.split(' ').filter { it.isNotEmpty() }.toSet())
             }
             .toList()
         indexEntries = entries
@@ -117,6 +119,12 @@ class BoxArtRepository @Inject constructor(
 
     private fun findBestMatch(candidates: List<String>, entries: List<IndexEntry>): IndexEntry? {
         for (candidate in candidates) {
+            val fullNormalized = normalize(candidate, stripQualifiers = false)
+            if (fullNormalized.isBlank()) continue
+            entries.firstOrNull { it.fullNormalized == fullNormalized }?.let { return it }
+        }
+
+        for (candidate in candidates) {
             val fullNormalized = normalize(candidate.substringBefore(" (").ifBlank { candidate })
             if (fullNormalized.isBlank()) continue
 
@@ -143,12 +151,12 @@ class BoxArtRepository @Inject constructor(
         return best.takeIf { bestScore >= 0.65 }
     }
 
-    private fun normalize(value: String): String {
+    private fun normalize(value: String, stripQualifiers: Boolean = true): String {
         val decomposed = Normalizer.normalize(value, Normalizer.Form.NFD)
         return decomposed
             .replace(Regex("\\p{M}+"), "")
             .lowercase()
-            .replace(Regex("\\(.*?\\)|\\[.*?]"), " ")
+            .let { if (stripQualifiers) it.replace(Regex("\\(.*?\\)|\\[.*?]"), " ") else it }
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")

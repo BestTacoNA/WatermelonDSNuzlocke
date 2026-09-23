@@ -85,7 +85,6 @@ class RomListFragment : Fragment() {
                 romListViewModel.navigateUp()
             }
         }
-        requireActivity().onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
         return ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -95,7 +94,7 @@ class RomListFragment : Fragment() {
                     val scanningStatus by romListViewModel.romScanningStatus
                         .collectAsState(initial = RomScanningStatus.NOT_SCANNING)
                     val confirmedAchievementHashes by romListViewModel.confirmedAchievementHashes.collectAsState()
-                    val raCoverByHash by romListViewModel.raCoverByHash.collectAsState()
+                    val raCoverByUri by romListViewModel.raCoverByUri.collectAsState()
                     val boxArtByUri by romListViewModel.boxArtByUri.collectAsState()
                     var contextRomUri by remember { mutableStateOf<String?>(null) }
                     var searchQuery by remember { mutableStateOf("") }
@@ -111,7 +110,7 @@ class RomListFragment : Fragment() {
 
                     RomBrowserScreen(
                         state = state,
-                        coverByHash = raCoverByHash,
+                        coverByUri = raCoverByUri,
                         boxArtByUri = boxArtByUri,
                         searchQuery = searchQuery,
                         allowConfiguration = allowRomConfiguration,
@@ -148,6 +147,7 @@ class RomListFragment : Fragment() {
 
                     RomContextMenu(
                         rom = currentContextRom,
+                        raCoverUrl = currentContextRom?.let { raCoverByUri[it.uri.toString()] },
                         onDismiss = { contextRomUri = null },
                         onToggleFavorite = { rom -> romListViewModel.toggleFavorite(rom) },
                         onShowDetails = { rom -> openRomDetails(rom) },
@@ -157,6 +157,11 @@ class RomListFragment : Fragment() {
                 }
             }
         }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backPressedCallback)
     }
 
     private fun openRomDetails(rom: Rom) {

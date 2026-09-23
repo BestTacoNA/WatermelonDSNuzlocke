@@ -2,7 +2,7 @@ package me.magnum.melonds.ui.romdetails.ui
 
 import android.app.Activity
 import android.app.ActivityManager
-import android.content.Context
+import android.content.res.Resources
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -39,6 +40,7 @@ import me.magnum.melonds.domain.model.VideoRenderer
 import me.magnum.melonds.domain.model.rom.Rom
 import me.magnum.melonds.domain.model.rom.config.RomConfig
 import me.magnum.melonds.domain.model.rom.config.RomInputMode
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.domain.model.rom.config.RuntimeConsoleType
 import me.magnum.melonds.domain.model.rom.config.RuntimeMicSource
 import me.magnum.melonds.ui.common.MelonPreviewSet
@@ -103,7 +105,9 @@ private fun Content(
     onCustomInputConfigEdited: () -> Unit,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val renameDialogState = rememberTextInputDialogState()
+    val iconSourceDialogState = rememberSingleChoiceDialogState<RomIconSource>()
     val consoleDialogState = rememberSingleChoiceDialogState<RuntimeConsoleType>()
     val micDialogState = rememberSingleChoiceDialogState<RuntimeMicSource>()
     val inputModeDialogState = rememberSingleChoiceDialogState<RomInputMode>()
@@ -138,6 +142,10 @@ private fun Content(
     val gbaSlotOptions = stringArrayResource(id = R.array.gba_slot_options)
     val rendererOptions = stringArrayResource(id = R.array.video_renderer_options)
     val internalResolutionOptions = stringArrayResource(id = R.array.video_internal_resolution_options)
+    val internalResolutionValues = stringArrayResource(id = R.array.video_internal_resolution_values).map(String::toInt)
+    fun internalResolutionLabel(scale: Int): String = internalResolutionOptions[
+        internalResolutionValues.indexOf(scale).coerceAtLeast(0)
+    ]
     val videoFilteringOptions = stringArrayResource(id = R.array.video_filtering_options)
     val useGlobal = stringResource(R.string.use_global_preference)
     val activityManager = context.getSystemService(ActivityManager::class.java)
@@ -163,24 +171,29 @@ private fun Content(
         ?: VideoFiltering.NONE
     val effectiveFiltering = selectedFiltering ?: effectiveGlobalFiltering
     fun useGlobalWithValue(value: String): String {
-        return context.getString(R.string.use_global_preference_with_value, value)
+        return resources.getString(R.string.use_global_preference_with_value, value)
     }
+    fun iconSourceLabel(source: RomIconSource): String = resources.getString(
+        when (source) {
+            RomIconSource.DEFAULT -> R.string.use_global_preference
+            RomIconSource.NATIVE -> R.string.rom_icon_source_native
+            RomIconSource.RETRO_ACHIEVEMENTS -> R.string.rom_icon_source_retro_achievements
+        },
+    )
     val globalConsoleLabel = consoleOptions[romConfig.globalRuntimeConsoleType.ordinal + 1]
     val globalMicLabel = micOptions[romConfig.globalRuntimeMicSource.ordinal + 1]
-    val globalInputModeLabel = context.getString(R.string.global_controller_mapping)
-    val globalLayoutLabel = romConfig.globalLayoutName ?: context.getString(R.string.not_set)
+    val globalInputModeLabel = resources.getString(R.string.global_controller_mapping)
+    val globalLayoutLabel = romConfig.globalLayoutName ?: resources.getString(R.string.not_set)
     val globalRendererLabel = rendererOptions[romConfig.globalVideoRenderer.ordinal]
     val globalThreadedRenderingLabel = if (romConfig.globalThreadedRendering) {
-        context.getString(R.string.on)
+        resources.getString(R.string.on)
     } else {
-        context.getString(R.string.off)
+        resources.getString(R.string.off)
     }
-    val globalInternalResolutionLabel = internalResolutionOptions[
-        (romConfig.globalInternalResolutionScaling - 1).coerceIn(internalResolutionOptions.indices)
-    ]
+    val globalInternalResolutionLabel = internalResolutionLabel(romConfig.globalInternalResolutionScaling)
     val globalVideoFilteringLabel = videoFilteringOptions[effectiveGlobalFiltering.ordinal]
-    val globalRetroArchPresetPathLabel = romConfig.globalRetroArchShaderPresetPath ?: context.getString(R.string.not_set)
-    val globalRetroArchParametersLabel = romConfig.globalRetroArchShaderParameters ?: context.getString(R.string.not_set)
+    val globalRetroArchPresetPathLabel = romConfig.globalRetroArchShaderPresetPath ?: resources.getString(R.string.not_set)
+    val globalRetroArchParametersLabel = romConfig.globalRetroArchShaderParameters ?: resources.getString(R.string.not_set)
     val rendererItems = buildList<VideoRenderer?> {
         add(null)
         add(VideoRenderer.SOFTWARE)
@@ -208,10 +221,24 @@ private fun Content(
             ConfigRow(
                 title = stringResource(R.string.label_rom_config_custom_name),
                 value = romConfig.customName ?: rom.name,
+                showDivider = true,
                 onClick = {
                     renameDialogState.show(
                         initialText = romConfig.customName ?: rom.name,
                         onConfirm = { newName -> onConfigUpdate(RomConfigUpdateEvent.CustomNameUpdate(newName.ifBlank { null })) },
+                    )
+                },
+            )
+            ConfigRow(
+                title = stringResource(R.string.rom_icon_source),
+                value = iconSourceLabel(romConfig.iconSource),
+                onClick = {
+                    iconSourceDialogState.show(
+                        title = resources.getString(R.string.rom_icon_source),
+                        items = RomIconSource.entries.toList(),
+                        labelOf = ::iconSourceLabel,
+                        selected = romConfig.iconSource,
+                        onSelect = { onConfigUpdate(RomConfigUpdateEvent.IconSourceUpdate(it)) },
                     )
                 },
             )
@@ -229,7 +256,7 @@ private fun Content(
                 showDivider = true,
                 onClick = {
                     consoleDialogState.show(
-                        title = context.getString(R.string.label_rom_config_console),
+                        title = resources.getString(R.string.label_rom_config_console),
                         items = RuntimeConsoleType.entries.toList(),
                         labelOf = {
                             if (it == RuntimeConsoleType.DEFAULT) {
@@ -253,7 +280,7 @@ private fun Content(
                 showDivider = true,
                 onClick = {
                     micDialogState.show(
-                        title = context.getString(R.string.microphone_source),
+                        title = resources.getString(R.string.microphone_source),
                         items = RuntimeMicSource.entries.toList(),
                         labelOf = {
                             if (it == RuntimeMicSource.DEFAULT) {
@@ -281,7 +308,7 @@ private fun Content(
                 showDivider = true,
                 onClick = {
                     videoRendererDialogState.show(
-                        title = context.getString(R.string.renderer),
+                        title = resources.getString(R.string.renderer),
                         items = rendererItems,
                         labelOf = { renderer -> renderer?.let { rendererOptions[it.ordinal] } ?: useGlobalWithValue(globalRendererLabel) },
                         selected = selectedRenderer,
@@ -300,12 +327,12 @@ private fun Content(
                     showDivider = true,
                     onClick = {
                         threadedRenderingDialogState.show(
-                            title = context.getString(R.string.threaded_rendering),
+                            title = resources.getString(R.string.threaded_rendering),
                             items = listOf(null, true, false),
                             labelOf = {
                                 when (it) {
-                                    true -> context.getString(R.string.on)
-                                    false -> context.getString(R.string.off)
+                                    true -> resources.getString(R.string.on)
+                                    false -> resources.getString(R.string.off)
                                     null -> useGlobalWithValue(globalThreadedRenderingLabel)
                                 }
                             },
@@ -318,15 +345,15 @@ private fun Content(
             AnimatedVisibility(visible = effectiveRenderer == VideoRenderer.OPENGL || effectiveRenderer == VideoRenderer.VULKAN) {
                 ConfigRow(
                     title = stringResource(R.string.internal_resolution),
-                    value = romConfig.internalResolutionScaling?.let { internalResolutionOptions[(it - 1).coerceIn(internalResolutionOptions.indices)] }
+                    value = romConfig.internalResolutionScaling?.let(::internalResolutionLabel)
                         ?: useGlobalWithValue(globalInternalResolutionLabel),
                     showDivider = true,
                     onClick = {
                         internalResolutionDialogState.show(
-                            title = context.getString(R.string.internal_resolution),
-                            items = listOf(null) + (1..internalResolutionOptions.size).toList(),
+                            title = resources.getString(R.string.internal_resolution),
+                            items = listOf(null) + internalResolutionValues,
                             labelOf = { scaling ->
-                                scaling?.let { internalResolutionOptions[(it - 1).coerceIn(internalResolutionOptions.indices)] }
+                                scaling?.let(::internalResolutionLabel)
                                     ?: useGlobalWithValue(globalInternalResolutionLabel)
                             },
                             selected = romConfig.internalResolutionScaling,
@@ -341,7 +368,7 @@ private fun Content(
                 showDivider = effectiveRenderer == VideoRenderer.VULKAN && effectiveFiltering == VideoFiltering.RETROARCH,
                 onClick = {
                     videoFilteringDialogState.show(
-                        title = context.getString(R.string.filter),
+                        title = resources.getString(R.string.filter),
                         items = filteringItems,
                         labelOf = { filtering -> filtering?.let { videoFilteringOptions[it.ordinal] } ?: useGlobalWithValue(globalVideoFilteringLabel) },
                         selected = selectedFiltering,
@@ -395,7 +422,7 @@ private fun Content(
                 showDivider = romConfig.inputMode == RomInputMode.CUSTOM,
                 onClick = {
                     inputModeDialogState.show(
-                        title = context.getString(R.string.label_rom_config_input_mode),
+                        title = resources.getString(R.string.label_rom_config_input_mode),
                         items = RomInputMode.entries.toList(),
                         labelOf = {
                             if (it == RomInputMode.GLOBAL) {
@@ -424,17 +451,17 @@ private fun Content(
             ConfigRow(
                 title = stringResource(R.string.label_rom_config_retroachievements_for_rom),
                 value = retroAchievementsModeLabel(
-                    context = context,
+                    resources = resources,
                     value = romConfig.retroAchievementsEnabled,
                     globalEnabled = romConfig.globalRetroAchievementsEnabled,
                 ),
                 onClick = {
                     retroAchievementsDialogState.show(
-                        title = context.getString(R.string.label_rom_config_retroachievements_for_rom),
+                        title = resources.getString(R.string.label_rom_config_retroachievements_for_rom),
                         items = listOf(null, true, false),
                         labelOf = { value ->
                             retroAchievementsModeLabel(
-                                context = context,
+                                resources = resources,
                                 value = value,
                                 globalEnabled = romConfig.globalRetroAchievementsEnabled,
                             )
@@ -467,7 +494,7 @@ private fun Content(
                 showDivider = isGbaRom,
                 onClick = {
                     gbaSlotDialogState.show(
-                        title = context.getString(R.string.label_rom_config_gba_slot),
+                        title = resources.getString(R.string.label_rom_config_gba_slot),
                         items = RomGbaSlotConfigUiModel.Type.entries.toList(),
                         labelOf = { gbaSlotOptions[it.ordinal] },
                         selected = romConfig.gbaSlotConfig.type,
@@ -502,6 +529,7 @@ private fun Content(
         onDelete = { onConfigUpdate(RomConfigUpdateEvent.CustomNameUpdate(null)) },
     )
     SingleChoiceDialog(consoleDialogState)
+    SingleChoiceDialog(iconSourceDialogState)
     SingleChoiceDialog(micDialogState)
     SingleChoiceDialog(inputModeDialogState)
     SingleChoiceDialog(gbaSlotDialogState)
@@ -524,23 +552,23 @@ private fun Content(
     )
 }
 
-private fun retroAchievementsModeLabel(context: Context, value: Boolean?, globalEnabled: Boolean): String {
+private fun retroAchievementsModeLabel(resources: Resources, value: Boolean?, globalEnabled: Boolean): String {
     return when (value) {
-        null -> context.getString(
+        null -> resources.getString(
             if (globalEnabled) {
                 R.string.retro_achievements_global_enabled
             } else {
                 R.string.retro_achievements_global_disabled
             }
         )
-        true -> context.getString(
+        true -> resources.getString(
             if (globalEnabled) {
                 R.string.retro_achievements_enabled
             } else {
                 R.string.retro_achievements_enabled_global_disabled
             }
         )
-        false -> context.getString(R.string.retro_achievements_disabled)
+        false -> resources.getString(R.string.retro_achievements_disabled)
     }
 }
 

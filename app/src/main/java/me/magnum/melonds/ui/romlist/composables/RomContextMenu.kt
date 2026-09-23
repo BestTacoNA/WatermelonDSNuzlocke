@@ -49,6 +49,7 @@ fun RomContextMenu(
     onShowDetails: (Rom) -> Unit,
     onSendSaveFile: (Rom) -> Unit,
     onImportSaveFile: (Rom) -> Unit,
+    raCoverUrl: String? = null,
 ) {
     if (rom == null) return
     val colors = watermelon
@@ -73,7 +74,7 @@ fun RomContextMenu(
                         WatermelonRomArt(
                             rom = rom,
                             boxArtUrl = null,
-                            raCoverUrl = null,
+                            raCoverUrl = raCoverUrl,
                             initialsFontSize = 15.sp,
                             modifier = Modifier.size(38.dp),
                         )

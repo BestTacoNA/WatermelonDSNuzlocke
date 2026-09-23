@@ -1,59 +1,93 @@
 #include "OboeCallback.h"
+#include "MelonDS.h"
 #include "types.h"
-#include "Platform.h"
-#include "SPU.h"
+#include <algorithm>
+#include <chrono>
+#include <utility>
 
 using namespace melonDS;
 
-#define INTERNAL_FRAME_RATE 59.8260982880808f
-
-OboeCallback::OboeCallback(int volume, void (*onErrorCallback)(void), std::ostream* recordingStream) : _volume(volume), onErrorCallback(onErrorCallback), _recordingStream(recordingStream) {
-    audioSampleFrac = 0;
+OboeCallback::OboeCallback(
+    int volume,
+    void (*onErrorCallback)(oboe::AudioStream*, std::uint64_t),
+    std::uint64_t streamGeneration,
+    std::shared_ptr<MelonDSAndroid::AudioOutputCapture> capture
+) : _volume(volume),
+    onErrorCallback(onErrorCallback),
+    streamGeneration(streamGeneration),
+    audioOutputCapture(std::move(capture)) {
 }
 
 oboe::DataCallbackResult
 OboeCallback::onAudioReady(oboe::AudioStream *stream, void *audioData, int32_t numFrames) {
+    const bool captureRequested =
+        audioOutputCapture && audioOutputCapture->tryBeginCallback(streamGeneration);
+    const auto callbackStartNs = captureRequested
+        ? std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch()).count()
+        : 0;
     auto currentInstance = activeInstance.lock();
+    MelonDSAndroid::AudioOutputAdaptiveSnapshot before {};
+    MelonDSAndroid::AudioOutputAdaptiveSnapshot after {};
+    MelonDSAndroid::AudioOutputControllerSnapshot controller {};
+    melonDS::AudioOutputDrainObservation drain {};
+    int readFrames = 0;
 
     if (!currentInstance)
     {
-        memset(audioData, 0, numFrames * sizeof(u16) * 2);
-        return oboe::DataCallbackResult::Continue;
+        std::fill_n(static_cast<s16*>(audioData), numFrames * 2, 0);
+        drain.valid = true;
+        drain.requestedFrames = static_cast<std::uint32_t>(numFrames);
+        drain.returnedFrames = static_cast<std::uint32_t>(numFrames);
+        drain.inactiveZeroFrames = static_cast<std::uint32_t>(numFrames);
     }
-
-    int len = numFrames;
-
-    double skew = std::clamp(60.0 / INTERNAL_FRAME_RATE, 0.995, 1.005);
-    currentInstance->setAudioOutputSkew(skew);
-
-    int len_in = getNumSamplesOut(len);
-    if (len_in > numFrames) len_in = numFrames;
-
-    int num_in = currentInstance->readAudioOutput((s16*) audioData, len_in);
-
-    if (num_in < 1)
+    else
     {
-        memset(audioData, 0, len * sizeof(s16) * 2);
-        return oboe::DataCallbackResult::Continue;
+        if (captureRequested)
+            before = currentInstance->getAudioOutputAdaptiveSnapshot();
+        readFrames = currentInstance->readAudioOutputAdaptivo(
+            (s16*) audioData, numFrames, captureRequested ? &drain : nullptr);
+        if (captureRequested)
+        {
+            after = currentInstance->getAudioOutputAdaptiveSnapshot();
+            controller = currentInstance->getAudioOutputControllerSnapshot();
+        }
     }
 
-    if (_volume < 256)
+    if (MelonDSAndroid::isFastForwardActive() && MelonDSAndroid::isMuteOnFastForward())
+    {
+
+        std::fill_n(static_cast<s16*>(audioData), numFrames * 2, 0);
+    }
+    else if (_volume < 256)
     {
         s16* samples = (s16*) audioData;
-        for (int i = 0; i < num_in * 2; i++)
+        for (int i = 0; i < numFrames * 2; i++)
             samples[i] = ((s32) samples[i] * _volume) >> 8;
     }
 
-    if (num_in < len_in)
+    if (captureRequested) [[unlikely]]
     {
-        int last = num_in - 1;
+        const auto pcmReadyNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
 
-        for (int i = num_in; i < len_in; i++)
-            ((u32*)audioData)[i] = ((u32*)audioData)[last];
+        const oboe::ResultWithValue<int32_t> xruns = stream->getXRunCount();
+        const std::int32_t xrunCount = xruns ? xruns.value() : -1;
+        audioOutputCapture->appendAndEndCallback(
+            static_cast<const std::int16_t*>(audioData),
+            numFrames,
+            readFrames,
+            streamGeneration,
+            _volume,
+            currentInstance != nullptr,
+            callbackStartNs,
+            pcmReadyNs,
+            before,
+            after,
+            controller,
+            drain,
+            xrunCount);
     }
-
-    if (_recordingStream) [[unlikely]]
-        _recordingStream->write((char*) audioData, numFrames * sizeof(s16) * 2);
 
     return oboe::DataCallbackResult::Continue;
 }
@@ -61,17 +95,6 @@ OboeCallback::onAudioReady(oboe::AudioStream *stream, void *audioData, int32_t n
 void OboeCallback::onErrorAfterClose(oboe::AudioStream* stream, oboe::Result result)
 {
     if (result == oboe::Result::ErrorDisconnected && onErrorCallback != nullptr) {
-        onErrorCallback();
+        onErrorCallback(stream, streamGeneration);
     }
-}
-
-int OboeCallback::getNumSamplesOut(int len)
-{
-    // TODO: adjust to game speed
-    float f_len_in = len /* * (curFPS/60.0)*/;
-    f_len_in += audioSampleFrac;
-    int len_in = (int) floor(f_len_in);
-    audioSampleFrac = f_len_in - len_in;
-
-    return len_in;
 }

@@ -3,6 +3,7 @@ package me.magnum.melonds.domain.repositories
 import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import me.magnum.melonds.domain.model.FrameskipConfiguration
 import me.magnum.melonds.domain.model.*
 import me.magnum.melonds.domain.model.camera.DSiCameraSourceType
 import me.magnum.melonds.domain.model.input.SoftInputBehaviour
@@ -19,6 +20,14 @@ interface SettingsRepository {
     fun getTheme(): Theme
     fun getFastForwardSpeedMultiplier(): Float
     fun getFrameLimitSpeedMultiplier(): Float
+
+    fun getFrameskipConfiguration(): FrameskipConfiguration
+    fun observeFrameskipConfiguration(): Flow<FrameskipConfiguration>
+
+    fun isVulkanDrsEnabled(): Boolean
+    fun observeVulkanDrsEnabled(): Flow<Boolean>
+
+    fun isVulkanDrsActive(): Boolean
     fun isRewindEnabled(): Boolean
     fun isSustainedPerformanceModeEnabled(): Boolean
     fun isAppLogFileEnabled(): Boolean
@@ -70,11 +79,12 @@ interface SettingsRepository {
     fun getVideoInternalResolutionScaling(): Flow<Int>
     fun getVideoFiltering(): Flow<VideoFiltering>
     fun isThreadedRenderingEnabled(): Flow<Boolean>
-    fun isVulkanFastPathEnabled(): Flow<Boolean>
     fun isRendererDebugToolsEnabled(): Flow<Boolean>
     fun isRendererDebugBgObjEnabled(): Flow<Boolean>
     fun isRendererDebugLatchTraceEnabled(): Flow<Boolean>
     fun getFpsCounterPosition(): FpsCounterPosition
+    fun getRenderedIrPosition(): FpsCounterPosition
+    fun getVideoInternalResolutionScalingValue(): Int
     fun observeRetroArchShaderRootValid(): Flow<Boolean>
     fun observeRetroArchShaderPresetPath(): Flow<String?>
     fun observeRetroArchShaderParametersText(): Flow<String?>
@@ -104,6 +114,9 @@ interface SettingsRepository {
     fun getDSiCameraStaticImage(): Uri?
 
     fun isSoundEnabled(): Boolean
+
+    fun isMuteOnFastForwardEnabled(): Boolean
+    fun observeMuteOnFastForwardEnabled(): Flow<Boolean>
     fun getAudioLatency(): AudioLatency
     fun getMicSource(): MicSource
     fun observeMicSource(): Flow<MicSource>

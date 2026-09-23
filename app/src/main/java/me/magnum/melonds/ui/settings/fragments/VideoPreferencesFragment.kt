@@ -39,7 +39,6 @@ import me.magnum.melonds.ui.settings.PreferenceFragmentHelper
 import me.magnum.melonds.ui.settings.PreferenceFragmentTitleProvider
 import me.magnum.melonds.ui.settings.SettingsActivity
 import me.magnum.melonds.ui.settings.preferences.InGameLockedListPreference
-import me.magnum.melonds.ui.settings.preferences.InGameLockedSwitchPreference
 import me.magnum.melonds.ui.settings.preferences.StoragePickerPreference
 import me.magnum.melonds.extensions.addOnPreferenceChangeListener
 import me.magnum.melonds.impl.AdrenoVulkanDriverManager
@@ -104,7 +103,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
 
     private val threadedRendererPreferences = mutableListOf<Preference>()
     private val highResRendererPreferences = mutableListOf<Preference>()
-    private val vulkanRendererPreferences = mutableListOf<Preference>()
     private val rendererDebugPreferences = mutableListOf<Preference>()
     private val coverageFixPreferences = mutableListOf<Preference>()
 
@@ -145,32 +143,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
             it.isInGameLocked = launchedInGame
             it.inGameLockedMessageRes = R.string.video_setting_cannot_change_ingame
         }
-        val vulkanFastPathPreference =
-            findPreference<InGameLockedSwitchPreference>("video_vulkan_fastpath_enabled")!!
-        vulkanFastPathPreference.isInGameLocked = launchedInGame
-        vulkanFastPathPreference.inGameLockedMessageRes = R.string.video_setting_cannot_change_ingame
-        vulkanFastPathPreference.setOnPreferenceChangeListener { preference, newValue ->
-            if (newValue != true) {
-                applyVulkanFastPathSelection(
-                    preference as InGameLockedSwitchPreference,
-                    enabled = false,
-                )
-                return@setOnPreferenceChangeListener false
-            }
-
-            AlertDialog.Builder(requireContext())
-                .setTitle(R.string.video_vulkan_fastpath_warning_title)
-                .setMessage(R.string.video_vulkan_fastpath_warning_message)
-                .setPositiveButton(R.string.video_vulkan_fastpath_enable_action) { _, _ ->
-                    applyVulkanFastPathSelection(
-                        preference as InGameLockedSwitchPreference,
-                        enabled = true,
-                    )
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .show()
-            false
-        }
 
         threadedRendererPreferences.apply {
             add(findPreference("enable_threaded_rendering")!!)
@@ -187,10 +159,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
             add(findPreference("video_renderer_debug_tools_enabled")!!)
             add(findPreference("video_renderer_debug_bgobj_enabled")!!)
             add(findPreference("video_renderer_debug_latch_trace_enabled")!!)
-        }
-
-        vulkanRendererPreferences.apply {
-            add(vulkanFastPathPreference)
         }
 
         coverageFixPreferences.apply {
@@ -284,6 +252,7 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                     allFilteringValues = allFilteringValues,
                     allFilteringEntries = allFilteringEntries,
                 )
+                updateVulkanDrsPreferenceState(newRenderer)
                 updateVulkanDriverPreferenceState(
                     renderer = newRenderer,
                     category = vulkanDriverCategory,
@@ -292,9 +261,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                     removePreference = vulkanDriverRemovePreference,
                     launchedInGame = launchedInGame,
                 )
-                if (newRenderer != VideoRenderer.VULKAN && vulkanFastPathPreference.isChecked) {
-                    applyVulkanFastPathSelection(vulkanFastPathPreference, enabled = false)
-                }
                 true
             }
         }
@@ -313,6 +279,8 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
         helper.setupStoragePickerPreference(retroArchShaderRootPreference)
         helper.bindPreferenceSummaryToValue(retroArchShaderPresetPreference)
         retroArchShaderParametersPreference?.let { helper.bindPreferenceSummaryToValue(it) }
+
+        updateVulkanDrsPreferenceState(enumValueOfIgnoreCase(rendererPreference.value))
         setupVulkanDriverPreferences(
             renderer = enumValueOfIgnoreCase(rendererPreference.value),
             category = vulkanDriverCategory,
@@ -419,6 +387,10 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
             removePreference = removePreference,
             launchedInGame = launchedInGame,
         )
+    }
+
+    private fun updateVulkanDrsPreferenceState(renderer: VideoRenderer) {
+        findPreference<PreferenceCategory>("video_vulkan_category")?.isVisible = renderer == VideoRenderer.VULKAN
     }
 
     private fun updateVulkanDriverPreferenceState(
@@ -905,9 +877,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                 rendererDebugPreferences.forEach {
                     it.isVisible = true
                 }
-                vulkanRendererPreferences.forEach {
-                    it.isVisible = false
-                }
             }
             VideoRenderer.OPENGL -> {
                 threadedRendererPreferences.forEach {
@@ -921,9 +890,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                 }
                 rendererDebugPreferences.forEach {
                     it.isVisible = true
-                }
-                vulkanRendererPreferences.forEach {
-                    it.isVisible = false
                 }
             }
             VideoRenderer.COMPUTE -> {
@@ -939,9 +905,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                 rendererDebugPreferences.forEach {
                     it.isVisible = false
                 }
-                vulkanRendererPreferences.forEach {
-                    it.isVisible = false
-                }
             }
             VideoRenderer.VULKAN -> {
                 threadedRendererPreferences.forEach {
@@ -954,9 +917,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                     it.isVisible = false
                 }
                 rendererDebugPreferences.forEach {
-                    it.isVisible = true
-                }
-                vulkanRendererPreferences.forEach {
                     it.isVisible = true
                 }
             }
@@ -974,13 +934,6 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
             allFilteringValues = allFilteringValues,
             allFilteringEntries = allFilteringEntries,
         )
-    }
-
-    private fun applyVulkanFastPathSelection(
-        preference: InGameLockedSwitchPreference,
-        enabled: Boolean,
-    ) {
-        preference.isChecked = enabled
     }
 
     private fun refreshConditionalVideoVisibility() {
@@ -1271,7 +1224,9 @@ class VideoPreferencesFragment : BasePreferenceFragment(), PreferenceFragmentTit
                 1 -> {
                     persistShaderSource(RetroArchShaderSource.FOLDER)
                     refreshShaderPreferenceVisibility()
-                    shaderRootPreference.performClick()
+                    if (shaderRootPreference.isEnabled && shaderRootPreference.isSelectable) {
+                        shaderRootPreference.onPreferenceClickListener?.onPreferenceClick(shaderRootPreference)
+                    }
                 }
             }
         }

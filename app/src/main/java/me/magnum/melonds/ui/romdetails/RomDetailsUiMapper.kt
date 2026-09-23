@@ -40,6 +40,7 @@ class RomDetailsUiMapper(
             globalLayoutName = layoutsRepository.getGlobalLayoutPlaceholder().name,
             gbaSlotConfig = mapGbaSlotConfigToUi(romConfig.gbaSlotConfig),
             customName = romConfig.customName,
+            iconSource = romConfig.iconSource,
             useHgEngineFix = romConfig.useHgEngineFix,
             inputMode = romConfig.inputMode,
             videoRenderer = romConfig.videoRenderer,

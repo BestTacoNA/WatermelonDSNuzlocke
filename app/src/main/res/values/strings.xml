@@ -286,6 +286,12 @@
     <string name="rom_games_count">%1$d games</string>
     <string name="rom_total_play_time_format">Played %1$s</string>
     <string name="rom_last_played_format">Last played %1$s</string>
+    <string name="rom_ndz_unsupported_legacy">Old .ndz layout (LZ4 or flat). Repack it with ndz-studio (zstd).</string>
+    <string name="rom_ndz_unsupported_trained_dict">.ndz with a trained dictionary (retired variant). Repack it with ndz-studio.</string>
+    <string name="rom_ndz_unsupported_base_patch">.ndz patch against a base ROM (.delta.ndz). Not supported yet.</string>
+    <string name="rom_ndz_unsupported_pair">.ndz container with several ROMs. Not supported yet.</string>
+    <string name="rom_ndz_unsupported_corrupt">Damaged or truncated .ndz file.</string>
+    <string name="rom_7z_memory_limit">7z dictionary of %1$d MB; this device can open up to %2$d MB. Recompress with a smaller dictionary or extract the ROM.</string>
     <string name="max_rom_cache_size">Max. ROM cache size</string>
     <string name="clear_extracted_rom_cache">Clear extracted ROM cache</string>
     <string name="cache_size">Cache size: %s</string>
@@ -307,6 +313,9 @@
     <string name="generate_new_mac_address_description">Generating a new MAC address will make games think they are running on a different system.</string>
     <string name="enable_jit">Enable JIT</string>
     <string name="enable_jit_summary">Improves performance but may cause freezes or crashes.</string>
+    <string name="frameskip_mode">Frameskip</string>
+    <string name="frameskip_mode_summary">%s. Only applies to the Vulkan renderer. In games that alternate 3D between screens the real cadence is lower.</string>
+    <string name="frameskip_manual_value">Frames to skip</string>
     <string name="jit_not_supported">JIT is only supported in 64 bit devices.</string>
     <string name="save_internal_config_as_file">Save internal config as a file</string>
     <string name="save_internal_config_as_file_summary">Keeps melonDualDS.opts synchronized in the save-file directory, or in a ROM directory when no save-file directory is configured.</string>
@@ -345,11 +354,6 @@
     <string name="threaded_rendering">Threaded rendering</string>
     <string name="fps_counter_position">FPS counter position</string>
     <string name="threaded_rendering_summary">Improves performance on 3D games when enabled but may cause graphical glitches.</string>
-    <string name="video_vulkan_fastpath_enabled" tools:ignore="MissingTranslation">Enable Vulkan FastPath</string>
-    <string name="video_vulkan_fastpath_enabled_summary" tools:ignore="MissingTranslation">Experimental feature. It may cause graphical glitches, stale or incorrect frames, or stability issues in some games.</string>
-    <string name="video_vulkan_fastpath_warning_title" tools:ignore="MissingTranslation">Enable experimental Vulkan FastPath?</string>
-    <string name="video_vulkan_fastpath_warning_message" tools:ignore="MissingTranslation">Vulkan FastPath may cause graphical glitches, stale or incorrect frames, or stability issues in some games.</string>
-    <string name="video_vulkan_fastpath_enable_action" tools:ignore="MissingTranslation">Enable FastPath</string>
     <string name="video_hacks">Video Hacks</string>
     <string name="video_renderer_debug_tools_enabled">Renderer debug tools</string>
     <string name="video_renderer_debug_tools_enabled_summary">Enables renderer snapshots, parity captures and performance/debug logs in release builds.</string>
@@ -362,12 +366,18 @@
     <string name="renderer_debug_capture_logged">Renderer capture dumped to Logcat. Capture ID: %1$s</string>
     <string name="renderer_debug_capture_failed">Renderer capture could not be dumped. Check that Renderer debug tools is enabled.</string>
     <string name="video_vulkan_driver_category">Vulkan driver</string>
+    <string name="video_vulkan_category">Vulkan Hacks</string>
+    <string name="rendered_ir_position">Show rendered IR</string>
+    <string name="info_rendered_ir">IR %1$dx / %2$dx</string>
+    <string name="video_vulkan_drs">Dynamic internal resolution</string>
+    <string name="video_vulkan_drs_summary">The game targets the selected internal resolution, but under heavy load it renders at a lower internal resolution to keep a stable 60 fps. While enabled, Frameskip is off.</string>
+    <string name="frameskip_mode_disabled_by_drs">DRS is active; to use Frameskip, disable dynamic internal resolution in Video settings.</string>
     <string name="video_vulkan_driver_mode">Adreno Vulkan driver</string>
     <string name="video_vulkan_driver_import">Import custom driver</string>
     <string name="video_vulkan_driver_import_summary">Install a driver ZIP. Changes apply the next time a game starts.</string>
     <string name="video_vulkan_driver_remove">Remove custom driver</string>
     <string name="video_vulkan_driver_remove_summary">Delete installed custom drivers.</string>
-    <string name="video_vulkan_driver_unsupported">Custom Adreno drivers are only available in the GitHub arm64 build on Android 9 or newer.</string>
+    <string name="video_vulkan_driver_unsupported">Custom drivers require an Adreno GPU, the GitHub arm64 build, and Android 9 or newer.</string>
     <string name="video_vulkan_driver_no_custom">Import a custom driver before selecting this option.</string>
     <string name="video_vulkan_driver_active_system">Using Android system Vulkan driver.</string>
     <string name="video_vulkan_driver_active_custom">Using %1$s when Vulkan starts.</string>
@@ -417,6 +427,8 @@
     <string name="bitrate">Bitrate</string>
     <string name="volume">Volume</string>
     <string name="volume_percentage">%1$d%%</string>
+    <string name="audio_mute_on_fast_forward">Mute on Fast Forward</string>
+    <string name="audio_mute_on_fast_forward_summary">No sound while fast forward is active</string>
     <string name="audio_latency">Audio latency</string>
     <string name="microphone_source">Microphone source</string>
     <string name="controller_layout">Layouts</string>
@@ -811,6 +823,7 @@
     <string name="game_has_no_achievements">This game has no achievements</string>
     <string name="achievements_failed_load">Failed to load achievements!</string>
     <string name="achievements_failed_load_tip">Make sure you are Online</string>
+    <string name="achievements_failed_load_tip_response_too_large">Achievements could not be loaded: the server response for this game is larger than the app\'s limit (16 MiB).</string>
     <string name="achievements_login_expired">RetroAchievements login expired!</string>
     <string name="achievements_login_expired_tip">Log in again to enable RetroAchievements</string>
     <string name="achievement_unlocked">Achievement unlocked!</string>
@@ -861,6 +874,18 @@
         <item>8x</item>
     </string-array>
 
+    <string-array name="frameskip_mode_options">
+        <item>Off</item>
+        <item>Manual</item>
+        <item>Auto</item>
+    </string-array>
+    <string-array name="frameskip_manual_value_options">
+        <item>0 (never skip)</item>
+        <item>1 (draw 1, skip 1)</item>
+        <item>2 (draw 1, skip 2)</item>
+        <item>3 (draw 1, skip 3)</item>
+        <item>4 (draw 1, skip 4)</item>
+    </string-array>
     <string-array name="frame_limit_speed_multiplier_options">
         <item>1.0x</item>
         <item>0.75x</item>
@@ -947,6 +972,9 @@
         <item>Compute</item>
     </string-array>
 
+    <string name="video_internal_resolution_12x">12x native (3072x2304)</string>
+    <string name="video_internal_resolution_16x">16x native (4096x3072)</string>
+
     <string-array name="video_internal_resolution_options">
         <item>1x native (256x192)</item>
         <item>2x native (512x384)</item>
@@ -956,6 +984,8 @@
         <item>6x native (1536x1152)</item>
         <item>7x native (1792x1344)</item>
         <item>8x native (2048x1536)</item>
+        <item>@string/video_internal_resolution_12x</item>
+        <item>@string/video_internal_resolution_16x</item>
     </string-array>
 
     <string-array name="video_filtering_options">
@@ -1096,4 +1126,7 @@
         <item>Fit bottom</item>
         <item>Fit right</item>
     </string-array>
+    <string name="rom_icon_source">Game icon</string>
+    <string name="rom_icon_source_native">Native DS/DSi icon</string>
+    <string name="rom_icon_source_retro_achievements">RetroAchievements icon</string>
 </resources>

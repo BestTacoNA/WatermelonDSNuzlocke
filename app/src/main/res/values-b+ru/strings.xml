@@ -453,10 +453,14 @@
     <string name="retroachievements_unsynchronized_data_info">Обнаружены несинхронизированные данные RetroAchievements. Операции в ожидании:</string>
     <plurals name="retroachievements_pending_achievement_unlocks">
         <item quantity="one">%d открытое достижение</item>
+        <item quantity="few">%d открытых достижения</item>
+        <item quantity="many">%d открытых достижений</item>
         <item quantity="other">открытые достижения: %d</item>
     </plurals>
     <plurals name="retroachievements_pending_leaderboard_entries">
         <item quantity="one">%d занесение в таблицу лидеров</item>
+        <item quantity="few">%d занесения в таблицу лидеров</item>
+        <item quantity="many">%d занесений в таблицу лидеров</item>
         <item quantity="other">занесения в таблицы лидеров: %d</item>
     </plurals>
     <string name="retroachievements_unsynchronized_data_connect_internet">Подключитесь к Интернет, чтобы синхронизировать данные.</string>
@@ -538,6 +542,8 @@
         <item>6x (1536x1152)</item>
         <item>7x (1792x1344)</item>
         <item>8x (2048x1536)</item>
+        <item>@string/video_internal_resolution_12x</item>
+        <item>@string/video_internal_resolution_16x</item>
     </string-array>
 
     <string-array name="video_filtering_options">

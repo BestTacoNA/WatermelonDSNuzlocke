@@ -35,6 +35,14 @@
             tools:text="FPS: 60"/>
 
     <TextView
+            android:id="@+id/textRenderedIr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:textColor="@android:color/white"
+            tools:text="IR 4x / 8x"/>
+
+    <TextView
             android:id="@+id/textLoading"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

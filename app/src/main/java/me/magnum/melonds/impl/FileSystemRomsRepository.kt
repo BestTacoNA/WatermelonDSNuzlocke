@@ -10,6 +10,7 @@ import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import android.provider.DocumentsContract
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +65,9 @@ class FileSystemRomsRepository(
         private const val ROM_DATA_FILE = "rom_data.json"
         private const val ROM_METADATA_MIRROR_FILE = "rom_metadata_mirror.json"
         private const val ROM_DIRECTORY_STATE_FILE = "rom_directory_state.json"
+        private const val ROM_DATA_SAVE_MIN_INTERVAL_MS = 2000L
+        private const val SCAN_EMIT_BATCH_SIZE = 50
+        private const val SCAN_EMIT_INTERVAL_MS = 250L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -84,6 +88,18 @@ class FileSystemRomsRepository(
     @Volatile private var hasUnavailableSearchDirectories = false
     private val skipNextRomDataSave = AtomicBoolean(false)
 
+    private val romDataSaveLock = Any()
+    private val romDataSavePending = AtomicBoolean(false)
+
+    private val romMetadataMirrorPending = AtomicBoolean(false)
+    @Volatile private var lastRomDataSaveAtMs = 0L
+    @Volatile private var lastSavedRomDtos: List<RomDto>? = null
+
+    private var pendingScanEmissions = 0
+    private var lastScanEmitAtMs = 0L
+
+    @Volatile private var restoredRomMetadataMemo: List<RomMetadataMirrorDto>? = null
+
     init {
         loadDirectoryStates()
 
@@ -92,7 +108,12 @@ class FileSystemRomsRepository(
                 if (skipNextRomDataSave.compareAndSet(true, false)) {
                     return@collect
                 }
-                saveRomData(it)
+                if (scanningStatusSubject.value == RomScanningStatus.SCANNING) {
+
+                    romDataSavePending.set(true)
+                    return@collect
+                }
+                saveRomDataIfChanged(it)
             }
         }
 
@@ -130,6 +151,7 @@ class FileSystemRomsRepository(
                 scanForNewRoms(targetDirectories = addedDirectoryStrings).collect {
                     addRom(it)
                 }
+                finishScanBatch()
                 scanningStatusSubject.emit(RomScanningStatus.NOT_SCANNING)
             }
         }
@@ -173,9 +195,7 @@ class FileSystemRomsRepository(
             allRoms
         }
 
-        // Try to find matching ROM by path, then by size (filename already pre-filtered)
         val cachedRom = findRomByPath(candidateRoms, uri)
-            ?: findRomBySize(candidateRoms, uri)
 
         if (cachedRom != null)
             return refreshRomConfigFromOptions(cachedRom)
@@ -195,22 +215,12 @@ class FileSystemRomsRepository(
         }
     }
 
-    private fun findRomBySize(roms: List<Rom>, uri: Uri): Rom? {
-        val incomingDoc = DocumentFile.fromSingleUri(context, uri)?.takeIf { it.exists() } ?: return null
-        val incomingSize = incomingDoc.length()
-
-        return roms.find { rom ->
-            val romDoc = DocumentFile.fromSingleUri(context, rom.uri)
-            romDoc?.length() == incomingSize
-        }
-    }
-
     override fun updateRomConfig(rom: Rom, romConfig: RomConfig) {
         val romIndex = roms.indexOfFirst { it.hasSameFileAsRom(rom) }
         if (romIndex < 0)
             return
 
-        roms[romIndex].config = romConfig
+        roms[romIndex] = roms[romIndex].copy(config = romConfig)
         syncRomOptionsFile(roms[romIndex])
         onRomsChanged()
     }
@@ -257,6 +267,7 @@ class FileSystemRomsRepository(
                 addRom(it)
             }
 
+            finishScanBatch()
             scanningStatusSubject.emit(RomScanningStatus.NOT_SCANNING)
         }
     }
@@ -299,6 +310,7 @@ class FileSystemRomsRepository(
                 isDsiWareTitle = incomingRom.isDsiWareTitle,
                 retroAchievementsHash = incomingRom.retroAchievementsHash,
                 config = optionsConfig ?: existingRom.config,
+                unsupportedReason = incomingRom.unsupportedReason,
             )
             roms.remove(existingRom)
             roms.add(updatedRom)
@@ -306,7 +318,56 @@ class FileSystemRomsRepository(
             roms.add(incomingRom)
         }
 
-        onRomsChanged()
+        onRomsChangedFromScan()
+    }
+
+    private fun onRomsChangedFromScan() {
+        if (scanningStatusSubject.value != RomScanningStatus.SCANNING) {
+            onRomsChanged()
+            return
+        }
+        val now = System.currentTimeMillis()
+        pendingScanEmissions++
+        romDataSavePending.set(true)
+        if (pendingScanEmissions >= SCAN_EMIT_BATCH_SIZE || now - lastScanEmitAtMs >= SCAN_EMIT_INTERVAL_MS) {
+            pendingScanEmissions = 0
+            lastScanEmitAtMs = now
+            onRomsChanged()
+            if (now - lastRomDataSaveAtMs >= ROM_DATA_SAVE_MIN_INTERVAL_MS) {
+                flushRomDataSave()
+            }
+        }
+    }
+
+    private fun finishScanBatch() {
+        if (pendingScanEmissions > 0) {
+            pendingScanEmissions = 0
+            lastScanEmitAtMs = System.currentTimeMillis()
+            onRomsChanged()
+        }
+        flushRomDataSave()
+        if (romMetadataMirrorPending.getAndSet(false)) {
+            synchronized(romDataSaveLock) { saveRomMetadataMirror(roms.toList()) }
+        }
+    }
+
+    private fun flushRomDataSave() {
+        if (!romDataSavePending.getAndSet(false) || hasUnavailableSearchDirectories) {
+            return
+        }
+        saveRomDataIfChanged(roms.toList())
+    }
+
+    private fun saveRomDataIfChanged(romData: List<Rom>) {
+        synchronized(romDataSaveLock) {
+            val romDtos = romData.map { RomDto.fromModel(it) }
+            if (romDtos == lastSavedRomDtos) {
+                return
+            }
+            saveRomData(romDtos, romData)
+            lastSavedRomDtos = romDtos
+            lastRomDataSaveAtMs = System.currentTimeMillis()
+        }
     }
 
     private fun refreshRomConfigFromOptions(rom: Rom): Rom {
@@ -349,6 +410,7 @@ class FileSystemRomsRepository(
     }
 
     private fun loadRestoredRomMetadata(): List<RomMetadataMirrorDto> {
+        restoredRomMetadataMemo?.let { return it }
         val metadataFile = File(context.filesDir, ROM_METADATA_MIRROR_FILE)
         if (!metadataFile.isFile) {
             return emptyList()
@@ -358,7 +420,7 @@ class FileSystemRomsRepository(
             gson.fromJson<List<RomMetadataMirrorDto>>(FileReader(metadataFile), romMetadataMirrorListType).orEmpty()
         }.onFailure {
             Log.w(TAG, "Failed to parse restored ROM metadata", it)
-        }.getOrElse { emptyList() }
+        }.getOrElse { emptyList() }.also { restoredRomMetadataMemo = it }
     }
 
     private fun syncRomOptionsFile(rom: Rom) {
@@ -407,8 +469,18 @@ class FileSystemRomsRepository(
     private fun writeRomOptions(rom: Rom) {
         val rootDocument = getRomOptionsRootDocument(rom) ?: return
         val optionsFileName = getRomOptionsFileName(rom)
+
         val optionsDocument = rootDocument.findFile(optionsFileName)
-            ?: rootDocument.createFile("application/octet-stream", optionsFileName)
+            ?: rootDocument.findFile("$optionsFileName.bin")?.also { legacy ->
+                if (!legacy.renameTo(optionsFileName)) {
+                    Log.w(TAG, "Could not rename legacy ROM options ${legacy.name} for ${rom.fileName}")
+                }
+            }
+            ?: rootDocument.createFile("application/octet-stream", optionsFileName)?.also { created ->
+                if (created.name != optionsFileName && !created.renameTo(optionsFileName)) {
+                    Log.w(TAG, "ROM options created as ${created.name} for ${rom.fileName}")
+                }
+            }
             ?: rootDocument.findFile(optionsFileName)
             ?: return
 
@@ -432,7 +504,10 @@ class FileSystemRomsRepository(
     }
 
     private fun getRomOptionsDocument(rom: Rom): DocumentFile? {
-        return getRomOptionsRootDocument(rom)?.findFile(getRomOptionsFileName(rom))
+        val rootDocument = getRomOptionsRootDocument(rom) ?: return null
+        val optionsFileName = getRomOptionsFileName(rom)
+
+        return rootDocument.findFile(optionsFileName) ?: rootDocument.findFile("$optionsFileName.bin")
     }
 
     private fun getRomOptionsRootDocument(rom: Rom): DocumentFile? {
@@ -540,6 +615,7 @@ class FileSystemRomsRepository(
             scannedRom = true
             addRom(it)
         }
+        finishScanBatch()
         if (!cacheReadResult.isValid && !scannedRom) {
             onRomsChanged(persist = false)
         }
@@ -587,6 +663,13 @@ class FileSystemRomsRepository(
         val directoryHash = computeDirectoryHash(fileStates)
         val now = System.currentTimeMillis()
 
+        val currentFileUris = fileStates.mapTo(HashSet(fileStates.size)) { it.uri.toString() }
+        val missingRomUris = roms.mapNotNullTo(mutableSetOf()) { rom ->
+            val uriString = rom.uri.toString()
+            uriString.takeIf { rom.parentTreeUri != null && isRomInDirectory(rom, directoryUri) && !currentFileUris.contains(it) }
+        }
+        removeRomsByUriStrings(missingRomUris)
+
         if (cachedState != null && cachedState.hash == directoryHash) {
             val refreshedState = cachedState.copy(lastScanned = now)
             updateDirectoryState(refreshedState, RomDirectoryScanStatus.ScanResult.UNCHANGED)
@@ -624,12 +707,14 @@ class FileSystemRomsRepository(
         val updatedFileUris = updatedFiles.map { it.uri.toString() }.toSet()
         val processedUpdatedFileUris = mutableSetOf<String>()
         for (fileState in updatedFiles) {
-            val fileRomProcessor = romFileProcessorFactory.getFileRomProcessorForDocument(fileState.documentFile)
+            val fileRomProcessor = romFileProcessorFactory.getFileRomProcessorForFileName(fileState.name)
                 ?: continue
             val rom = fileRomProcessor.getRomFromUri(fileState.uri, fileState.parentUri)
                 ?: continue
 
-            processedUpdatedFileUris.add(fileState.uri.toString())
+            if (rom.unsupportedReason == null) {
+                processedUpdatedFileUris.add(fileState.uri.toString())
+            }
             collector.emit(rom)
         }
 
@@ -661,41 +746,73 @@ class FileSystemRomsRepository(
 
     private fun collectDirectoryFileStates(rootDirectory: DocumentFile): List<DirectoryFileState>? {
         val files = mutableListOf<DirectoryFileState>()
-        if (!collectDirectoryFileStatesRecursive(rootDirectory, files)) {
+        if (!rootDirectory.exists() || !rootDirectory.canRead()) {
+            Log.w(TAG, "Cannot read ROM directory ${rootDirectory.uri}")
+            return null
+        }
+        if (!collectDirectoryFileStatesRecursive(rootDirectory.uri, files)) {
             return null
         }
         return files
     }
 
-    private fun collectDirectoryFileStatesRecursive(currentDirectory: DocumentFile, accumulator: MutableList<DirectoryFileState>): Boolean {
-        if (!currentDirectory.exists() || !currentDirectory.canRead()) {
-            Log.w(TAG, "Cannot read ROM directory ${currentDirectory.uri}")
-            return false
-        }
+    private fun collectDirectoryFileStatesRecursive(currentDirectoryUri: Uri, accumulator: MutableList<DirectoryFileState>): Boolean {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
+            currentDirectoryUri,
+            DocumentsContract.getDocumentId(currentDirectoryUri),
+        )
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_MIME_TYPE,
+            DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+            DocumentsContract.Document.COLUMN_SIZE,
+        )
 
-        val files = try {
-            currentDirectory.listFiles()
+        val rows = try {
+            val cursor = context.contentResolver.query(childrenUri, projection, null, null, null)
+            if (cursor == null) {
+                Log.w(TAG, "Cannot read ROM directory $currentDirectoryUri")
+                return false
+            }
+            cursor.use {
+                val list = ArrayList<Array<Any?>>(it.count)
+                while (it.moveToNext()) {
+                    list.add(
+                        arrayOf(
+                            it.getString(0),
+                            it.getString(1),
+                            it.getString(2),
+                            if (it.isNull(3)) 0L else it.getLong(3),
+                            if (it.isNull(4)) 0L else it.getLong(4),
+                        )
+                    )
+                }
+                list
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to list files for directory ${currentDirectory.uri}", e)
+            Log.w(TAG, "Failed to list files for directory $currentDirectoryUri", e)
             return false
         }
-        for (file in files) {
-            if (file.isDirectory) {
-                if (!collectDirectoryFileStatesRecursive(file, accumulator)) {
+        for (row in rows) {
+            val documentId = row[0] as String? ?: continue
+            val fileUri = DocumentsContract.buildDocumentUriUsingTree(currentDirectoryUri, documentId)
+            if (DocumentsContract.Document.MIME_TYPE_DIR == row[2]) {
+                if (!collectDirectoryFileStatesRecursive(fileUri, accumulator)) {
                     return false
                 }
                 continue
             }
 
-            val fileProcessor = romFileProcessorFactory.getFileRomProcessorForDocument(file)
-            if (fileProcessor != null) {
+            val name = row[1] as String? ?: continue
+            if (romFileProcessorFactory.getFileRomProcessorForFileName(name) != null) {
                 accumulator.add(
                     DirectoryFileState(
-                        uri = file.uri,
-                        parentUri = currentDirectory.uri,
-                        lastModified = file.lastModified().coerceAtLeast(0),
-                        size = file.length().coerceAtLeast(0),
-                        documentFile = file
+                        uri = fileUri,
+                        parentUri = currentDirectoryUri,
+                        lastModified = (row[3] as Long).coerceAtLeast(0),
+                        size = (row[4] as Long).coerceAtLeast(0),
+                        name = name
                     )
                 )
             }
@@ -859,7 +976,9 @@ class FileSystemRomsRepository(
 
         return runCatching {
             FileReader(cacheFile).use { reader ->
-                gson.fromJson<List<RomDto>>(reader, romListType).orEmpty().map {
+                val cachedDtos = gson.fromJson<List<RomDto>>(reader, romListType).orEmpty()
+                lastSavedRomDtos = cachedDtos
+                cachedDtos.map {
                     it.toModel()
                 }
             }
@@ -870,17 +989,19 @@ class FileSystemRomsRepository(
         }.getOrElse { RomCacheReadResult(emptyList(), false) }
     }
 
-    private fun saveRomData(romData: List<Rom>) {
+    private fun saveRomData(romDtos: List<RomDto>, romData: List<Rom>) {
         val cacheFile = File(context.filesDir, ROM_DATA_FILE)
 
         try {
-            val romDtos = romData.map {
-                RomDto.fromModel(it)
-            }
             val romsJson = gson.toJson(romDtos)
 
             writeTextAtomically(cacheFile, romsJson)
-            saveRomMetadataMirror(romData)
+            if (scanningStatusSubject.value == RomScanningStatus.SCANNING) {
+
+                romMetadataMirrorPending.set(true)
+            } else {
+                saveRomMetadataMirror(romData)
+            }
             settingsBackupManager.requestMirrorWrite()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save ROM data", e)
@@ -903,6 +1024,7 @@ class FileSystemRomsRepository(
             )
         }
         writeTextAtomically(metadataFile, gson.toJson(metadata))
+        restoredRomMetadataMemo = null
     }
 
     private fun writeTextAtomically(file: File, text: String) {
@@ -962,24 +1084,24 @@ class FileSystemRomsRepository(
         val parentUri: Uri,
         val lastModified: Long,
         val size: Long,
-        val documentFile: DocumentFile
+        val name: String
     )
 
     private data class RomMetadataMirrorDto(
-        val name: String,
-        val developerName: String,
-        val fileName: String,
-        val config: RomConfigDto,
-        val lastPlayed: Date? = null,
-        val isDsiWareTitle: Boolean,
-        val retroAchievementsHash: String,
-        val totalPlayTime: Long = 0,
-        val isFavorite: Boolean = false,
+        @SerializedName("a") val name: String,
+        @SerializedName("b") val developerName: String,
+        @SerializedName("c") val fileName: String,
+        @SerializedName("d") val config: RomConfigDto,
+        @SerializedName("e") val lastPlayed: Date? = null,
+        @SerializedName("f") val isDsiWareTitle: Boolean,
+        @SerializedName("g") val retroAchievementsHash: String,
+        @SerializedName("h") val totalPlayTime: Long = 0,
+        @SerializedName("i") val isFavorite: Boolean = false,
     )
 
     private data class RomOptionsDto(
         val version: Int = 1,
-        val config: RomConfigDto,
+        @SerializedName("a") val config: RomConfigDto,
     )
 
     private fun RomDirectoryStateDto.toCacheState(): DirectoryCacheState {

@@ -1,19 +1,4 @@
 # Vulkan SPIR-V Regeneration
-
-This project keeps Vulkan shaders precompiled in-repo as C headers:
-
-- `melonDS-android-lib/src/GPU3D_Vulkan_InterpSpansShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_BinCombinedShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_CalculateWorkOffsetsShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_SortWorkShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_TriRasterShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_TriRasterCompatShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_DepthBlendShaderData.h`
-- `melonDS-android-lib/src/GPU3D_Vulkan_FinalPassShaderData.h`
-- `melonDS-android-lib/src/android/renderer/VulkanCompositorShaderData.h`
-- `melonDS-android-lib/src/android/renderer/VulkanSurfacePresenterVertexShaderData.h`
-- `melonDS-android-lib/src/android/renderer/VulkanSurfacePresenterFragmentShaderData.h`
-
 ## Automatic Flow (recommended)
 
 Vulkan shader headers are regenerated automatically during native/app builds:

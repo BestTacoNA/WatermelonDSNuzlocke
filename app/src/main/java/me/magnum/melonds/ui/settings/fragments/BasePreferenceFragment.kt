@@ -9,7 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceGroupAdapter
+import androidx.preference.PreferenceGroup
 import androidx.preference.TwoStatePreference
 import androidx.recyclerview.widget.RecyclerView
 
@@ -55,9 +55,9 @@ abstract class BasePreferenceFragment : PreferenceFragmentCompat() {
                     view.setOnFocusChangeListener { v, hasFocus ->
                         if (hasFocus) {
                             val pos = recyclerView.getChildAdapterPosition(v)
-                            val adapter = recyclerView.adapter as? PreferenceGroupAdapter
+                            val adapter = recyclerView.adapter as? PreferenceGroup.PreferencePositionCallback
                             if (pos != RecyclerView.NO_POSITION && adapter != null) {
-                                (adapter.getItem(pos) as? Preference)?.let { pref ->
+                                findPreferenceAtPosition(preferenceScreen, adapter, pos)?.let { pref ->
                                     (activity as? me.magnum.melonds.ui.settings.SettingsActivity)?.onPreferenceFocused(pref)
                                 }
                             }
@@ -84,8 +84,25 @@ abstract class BasePreferenceFragment : PreferenceFragmentCompat() {
         recyclerView.post { restoreFocusToPreference(recyclerView, key) }
     }
 
+    private fun findPreferenceAtPosition(
+        group: PreferenceGroup,
+        positions: PreferenceGroup.PreferencePositionCallback,
+        position: Int,
+    ): Preference? {
+        for (index in 0 until group.preferenceCount) {
+            val preference = group.getPreference(index)
+            if (positions.getPreferenceAdapterPosition(preference) == position) {
+                return preference
+            }
+            if (preference is PreferenceGroup) {
+                findPreferenceAtPosition(preference, positions, position)?.let { return it }
+            }
+        }
+        return null
+    }
+
     private fun restoreFocusToPreference(recyclerView: RecyclerView, key: String, attempt: Int = 0) {
-        val adapter = recyclerView.adapter as? PreferenceGroupAdapter ?: return
+        val adapter = recyclerView.adapter as? PreferenceGroup.PreferencePositionCallback ?: return
         val position = adapter.getPreferenceAdapterPosition(key)
         if (position == RecyclerView.NO_POSITION) {
             return

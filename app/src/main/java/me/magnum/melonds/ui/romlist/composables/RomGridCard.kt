@@ -82,7 +82,7 @@ fun RomGridCard(
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 4000f),
         label = "press",
     )
-    var artLoaded by remember(rom.uri) { mutableStateOf(false) }
+    var artLoaded by remember(rom.uri, rom.config.iconSource, boxArtUrl, coverUrl) { mutableStateOf(false) }
 
     Box(
         modifier = modifier

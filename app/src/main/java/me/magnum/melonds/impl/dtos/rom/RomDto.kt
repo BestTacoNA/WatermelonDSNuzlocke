@@ -29,6 +29,8 @@ data class RomDto(
     val totalPlayTime: Long = 0,
     @SerializedName("isFavorite")
     val isFavorite: Boolean = false,
+    @SerializedName("unsupportedReason")
+    val unsupportedReason: String? = null,
 ) {
 
     companion object {
@@ -45,6 +47,7 @@ data class RomDto(
                 rom.retroAchievementsHash,
                 rom.totalPlayTime.inWholeMilliseconds,
                 rom.isFavorite,
+                unsupportedReason = rom.unsupportedReason,
             )
         }
     }
@@ -62,6 +65,7 @@ data class RomDto(
             retroAchievementsHash,
             totalPlayTime.milliseconds,
             isFavorite,
+            unsupportedReason = unsupportedReason,
         )
     }
 }

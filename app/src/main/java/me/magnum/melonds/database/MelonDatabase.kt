@@ -28,7 +28,7 @@ import me.magnum.melonds.database.entities.retroachievements.RAPendingAchievemen
 import me.magnum.melonds.database.entities.retroachievements.RAUserAchievementEntity
 
 @Database(
-    version = 9,
+    version = 10,
     exportSchema = true,
     entities = [
         CheatDatabaseEntity::class,
@@ -48,6 +48,7 @@ import me.magnum.melonds.database.entities.retroachievements.RAUserAchievementEn
         AutoMigration(from = 2, to = 3, spec = MelonDatabase.Migration2to3Spec::class),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 6, to = 7),
+        AutoMigration(from = 9, to = 10),
     ]
 )
 @TypeConverters(InstantConverter::class)

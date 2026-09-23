@@ -42,7 +42,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
@@ -81,7 +80,6 @@ import me.magnum.melonds.domain.model.SCREEN_WIDTH
 import me.magnum.melonds.domain.model.ScreenAlignment
 import me.magnum.melonds.domain.model.VideoFiltering
 import me.magnum.melonds.domain.model.VideoRenderer
-import me.magnum.melonds.domain.model.VulkanPipelineProfile
 import me.magnum.melonds.domain.model.defaultExternalAlignment
 import me.magnum.melonds.domain.model.defaultInternalAlignment
 import me.magnum.melonds.domain.model.emulator.EmulatorEvent
@@ -127,6 +125,7 @@ import me.magnum.melonds.domain.repositories.SaveStatesRepository
 import me.magnum.melonds.domain.repositories.SettingsRepository
 import me.magnum.melonds.domain.services.EmulatorManager
 import me.magnum.melonds.impl.ShaderCompileTimeStore
+import me.magnum.melonds.impl.emulator.AndroidEmulatorManager
 import me.magnum.melonds.impl.emulator.EmulatorSession
 import me.magnum.melonds.impl.emulator.LeaderboardTrackerUpdateLogLimiter
 import me.magnum.melonds.impl.emulator.debug.RendererDebugCaptureLogger
@@ -199,6 +198,7 @@ import me.magnum.melonds.ui.emulator.model.VulkanCompileProgress
 import me.magnum.melonds.ui.emulator.rewind.model.RewindSaveState
 import me.magnum.melonds.ui.emulator.rom.RomPauseMenuOption
 import me.magnum.melonds.utils.EventSharedFlow
+import me.magnum.melonds.utils.FileUtils
 import me.magnum.rcheevosapi.exception.UserTokenExpiredException
 import me.magnum.rcheevosapi.model.RAAchievement
 import me.magnum.rcheevosapi.model.RAAchievementSet
@@ -469,6 +469,9 @@ class EmulatorViewModel @Inject constructor(
     private val _currentFps = MutableStateFlow<Int?>(null)
     val currentFps = _currentFps.asStateFlow()
 
+    private val _renderedInternalResolution = MutableStateFlow<Pair<Int, Int>?>(null)
+    val renderedInternalResolution = _renderedInternalResolution.asStateFlow()
+
     private val _toastEvent = EventSharedFlow<ToastEvent>()
     val toastEvent = _toastEvent.asSharedFlow()
 
@@ -545,6 +548,27 @@ class EmulatorViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+
+            settingsRepository.observeFrameskipConfiguration().collectLatest {
+                emulatorManager.setFrameskipConfiguration(it)
+            }
+        }
+        viewModelScope.launch {
+
+            kotlinx.coroutines.flow.combine(
+                settingsRepository.observeVulkanDrsEnabled(),
+                settingsRepository.getVideoRenderer(),
+            ) { _, _ -> settingsRepository.isVulkanDrsActive() }.collectLatest {
+                emulatorManager.setVulkanDrsEnabled(it)
+            }
+        }
+        viewModelScope.launch {
+
+            settingsRepository.observeMuteOnFastForwardEnabled().collectLatest {
+                emulatorManager.setMuteOnFastForward(it)
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.observeExternalDisplayKeepAspectRationEnabled().collectLatest {
                 _externalDisplayKeepAspectRatioEnabled.value = it
             }
@@ -596,6 +620,28 @@ class EmulatorViewModel @Inject constructor(
         } else {
             _uiEvent.tryEmit(EmulatorUiEvent.CloseEmulator)
         }
+    }
+
+    suspend fun isRunningRomLaunch(args: LaunchArgs): Boolean {
+        val running = _emulatorState.value as? EmulatorState.RunningRom ?: return false
+        val requestedUri = when (args) {
+            is LaunchArgs.RomObject -> args.rom.uri
+            is LaunchArgs.RomUri -> args.uri
+            is LaunchArgs.RomPath -> null
+            is LaunchArgs.Firmware -> return false
+        }
+        if (requestedUri == running.rom.uri) return true
+
+        val sameFile = withContext(Dispatchers.IO) {
+            val requestedPath = if (args is LaunchArgs.RomPath) {
+                args.path
+            } else {
+                requestedUri?.let { FileUtils.getAbsolutePathFromSingleUri(context, it) }
+            }
+            requestedPath != null && requestedPath.startsWith("/") &&
+                requestedPath == FileUtils.getAbsolutePathFromSingleUri(context, running.rom.uri)
+        }
+        return sameFile && _emulatorState.value === running
     }
 
     fun relaunchWithNewArgs(args: LaunchArgs) {
@@ -811,7 +857,7 @@ class EmulatorViewModel @Inject constructor(
                 is RomLaunchResult.LaunchFailedSramProblem,
                 is RomLaunchResult.LaunchFailed -> {
                     disableRetroAchievementsRuntime(reason = "rom_load_failed")
-                    _emulatorState.value = EmulatorState.RomLoadError
+                    _emulatorState.value = EmulatorState.RomLoadError(rom.unsupportedReason)
                 }
                 is RomLaunchResult.LaunchSuccessful -> {
                     if (!result.isGbaLoadSuccessful) {
@@ -830,7 +876,7 @@ class EmulatorViewModel @Inject constructor(
             }
             Log.e("EmulatorViewModel", "Failed to launch ROM '${rom.name}'", exception)
             disableRetroAchievementsRuntime(reason = "rom_launch_exception")
-            _emulatorState.value = EmulatorState.RomLoadError
+            _emulatorState.value = EmulatorState.RomLoadError(rom.unsupportedReason)
         }
     }
 
@@ -1277,11 +1323,8 @@ class EmulatorViewModel @Inject constructor(
                         suspendRcClientSubmissionTransport,
                     )
                     if (settingsRepository.getCurrentVideoRenderer() == VideoRenderer.VULKAN) {
-                        val pipelineProfile = VulkanPipelineProfile.fromFastPathPreference(
-                            settingsRepository.isVulkanFastPathEnabled().first()
-                        )
                         val canUseVulkan = MelonDSAndroidInterface.isVulkanRendererSupported() &&
-                            MelonDSAndroidInterface.canInitializeVulkanRenderer(pipelineProfile)
+                            MelonDSAndroidInterface.canInitializeVulkanRenderer()
                         if (!canUseVulkan) {
                             val activeRenderer = getRuntimeRendererOrNull() ?: VideoRenderer.SOFTWARE
                             settingsRepository.setCurrentVideoRenderer(activeRenderer)
@@ -1689,7 +1732,8 @@ class EmulatorViewModel @Inject constructor(
             _emulatorState.value.isRunning() &&
             settingsReconciliationsInFlight.get() == 0 &&
             raSessionStopGate.canResume() &&
-            !pendingRaModalController.blocksLifecycleResume()
+            !pendingRaModalController.blocksLifecycleResume() &&
+            !DebugCommandStateStore.isDebugPauseHeld()
         ) {
             emulatorManager.resumeEmulator()
         }
@@ -2657,6 +2701,7 @@ class EmulatorViewModel @Inject constructor(
         leaderboardTrackerUpdateLogLimiter.resetAll()
         emulatorSession.reset()
         _currentFps.value = null
+        _renderedInternalResolution.value = null
         _emulatorState.value = newState
         _mainScreenBackground.value = RuntimeBackground.None
         _secondaryScreenBackground.value = RuntimeBackground.None
@@ -2722,7 +2767,7 @@ class EmulatorViewModel @Inject constructor(
                         when (_emulatorState.value) {
                             is EmulatorState.LoadingRom -> {
                                 stopEmulator()
-                                _emulatorState.value = EmulatorState.RomLoadError
+                                _emulatorState.value = EmulatorState.RomLoadError()
                             }
                             is EmulatorState.LoadingFirmware -> {
                                 stopEmulator()
@@ -2960,6 +3005,10 @@ class EmulatorViewModel @Inject constructor(
 
     fun getFpsCounterPosition(): FpsCounterPosition {
         return settingsRepository.getFpsCounterPosition()
+    }
+
+    fun getRenderedIrPosition(): FpsCounterPosition {
+        return settingsRepository.getRenderedIrPosition()
     }
 
     private suspend fun getRomEnabledCheats(romInfo: RomInfo): List<Cheat> {
@@ -5749,8 +5798,17 @@ class EmulatorViewModel @Inject constructor(
                                     "runtime_path" to activeRuntimePath.name,
                                     "error" to throwable.javaClass.simpleName,
                                 )
-                                emulatorSession.updateRetroAchievementsIntegrationStatus(GameAchievementData.IntegrationStatus.DISABLED_LOAD_ERROR)
-                                _raIntegrationEvent.tryEmit(RAIntegrationEvent.Failed(achievementData.icon))
+
+                                val responseTooLarge =
+                                    (throwable as? AndroidEmulatorManager.RetroAchievementsSetupException)?.isResponseTooLarge == true
+                                emulatorSession.updateRetroAchievementsIntegrationStatus(
+                                    if (responseTooLarge) {
+                                        GameAchievementData.IntegrationStatus.DISABLED_LOAD_ERROR_RESPONSE_TOO_LARGE
+                                    } else {
+                                        GameAchievementData.IntegrationStatus.DISABLED_LOAD_ERROR
+                                    },
+                                )
+                                _raIntegrationEvent.tryEmit(RAIntegrationEvent.Failed(achievementData.icon, responseTooLarge))
                                 return@launch
                             }
                             emulatorSession.updateRetroAchievementsOfflineModeEnabled(false)
@@ -6214,6 +6272,9 @@ class EmulatorViewModel @Inject constructor(
             while (isActive) {
                 delay(1.seconds)
                 _currentFps.value = emulatorManager.getFps().roundToInt()
+                val configuredIr = settingsRepository.getVideoInternalResolutionScalingValue()
+                val renderedIr = emulatorManager.getVulkanRenderedInternalResolution().takeIf { it > 0 } ?: configuredIr
+                _renderedInternalResolution.value = renderedIr to configuredIr
             }
         }
     }

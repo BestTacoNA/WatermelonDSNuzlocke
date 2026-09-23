@@ -4,11 +4,13 @@ import android.net.Uri
 import me.magnum.melonds.domain.model.VideoFiltering
 import me.magnum.melonds.domain.model.VideoRenderer
 import me.magnum.melonds.domain.model.rom.config.RomInputMode
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.domain.model.rom.config.RuntimeConsoleType
 import me.magnum.melonds.domain.model.rom.config.RuntimeMicSource
 import java.util.UUID
 
 sealed class RomConfigUpdateEvent {
+    data class IconSourceUpdate(val iconSource: RomIconSource) : RomConfigUpdateEvent()
     data class RuntimeConsoleUpdate(val newRuntimeConsole: RuntimeConsoleType) : RomConfigUpdateEvent()
     data class RuntimeMicSourceUpdate(val newRuntimeMicSource: RuntimeMicSource) : RomConfigUpdateEvent()
     data class UseHgEngineFixUpdate(val enabled: Boolean) : RomConfigUpdateEvent()

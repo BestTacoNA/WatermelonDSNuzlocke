@@ -369,6 +369,7 @@ class EmulatorActivity : AppCompatActivity() {
         }
         setupSustainedPerformanceMode()
         setupFpsCounter()
+        setupRenderedIrOverlay()
         externalDisplayMode = settingsRepository.getExternalDisplayMode()
         updateDisplays()
     }
@@ -518,6 +519,9 @@ class EmulatorActivity : AppCompatActivity() {
             binding.textFps.updateLayoutParams<ConstraintLayout.LayoutParams> {
                 setMargins(insets.left, insets.top, insets.right, insets.bottom)
             }
+            binding.textRenderedIr.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                setMargins(insets.left, insets.top, insets.right, insets.bottom)
+            }
 
             val uiInsets = if (viewModel.shouldIgnoreDisplayCutoutInLayouts()) {
                 Insets.Zero
@@ -555,6 +559,7 @@ class EmulatorActivity : AppCompatActivity() {
         }
 
         binding.textFps.visibility = View.INVISIBLE
+        binding.textRenderedIr.visibility = View.INVISIBLE
         binding.viewLayoutControls.setLayoutComponentViewBuilderFactory(RuntimeLayoutComponentViewBuilderFactory())
         binding.layoutRewind.setOnClickListener {
             closeRewindWindow()
@@ -870,6 +875,17 @@ class EmulatorActivity : AppCompatActivity() {
         }
         lifecycleScope.launch {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.renderedInternalResolution.collectLatest {
+                    if (it == null) {
+                        binding.textRenderedIr.text = null
+                    } else {
+                        binding.textRenderedIr.text = getString(R.string.info_rendered_ir, it.first, it.second)
+                    }
+                }
+            }
+        }
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 settingsRepository.observeTouchScreenSystemGestureExclusionEnabled().collectLatest {
                     excludeTouchScreenFromSystemGestures = it
                     updateRendererScreenAreas()
@@ -1114,6 +1130,7 @@ class EmulatorActivity : AppCompatActivity() {
                         is EmulatorState.Uninitialized -> {
                             binding.viewLayoutControls.isInvisible = true
                             binding.textFps.isGone = true
+                            binding.textRenderedIr.isGone = true
                             binding.textLoading.isGone = true
                             binding.progressLoading.isGone = true
                             binding.textLoadingDetail.isGone = true
@@ -1148,6 +1165,7 @@ class EmulatorActivity : AppCompatActivity() {
                             presentation?.setInfoOverlayContent(null)
                             setupSustainedPerformanceMode()
                             setupFpsCounter()
+                            setupRenderedIrOverlay()
                             binding.textLoading.isGone = true
                             binding.progressLoading.isGone = true
                             binding.textLoadingDetail.isGone = true
@@ -1155,6 +1173,7 @@ class EmulatorActivity : AppCompatActivity() {
                             backPressedCallback.isEnabled = true
                             scheduleStartupPresentationRefreshes()
                             if (
+                                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
                                 !activeOverlays.hasActiveOverlays() &&
                                 viewModel.canResumeEmulatorFromLifecycle()
                             ) {
@@ -1164,16 +1183,18 @@ class EmulatorActivity : AppCompatActivity() {
                         is EmulatorState.RomLoadError -> {
                             binding.viewLayoutControls.isInvisible = true
                             binding.textFps.isGone = true
+                            binding.textRenderedIr.isGone = true
                             binding.textLoading.isGone = true
                             binding.progressLoading.isGone = true
                             binding.textLoadingDetail.isGone = true
                             showBootAnimation.value = false
                             presentation?.setInfoOverlayContent(null)
-                            showRomLoadErrorDialog()
+                            showRomLoadErrorDialog(it.reason)
                         }
                         is EmulatorState.FirmwareLoadError -> {
                             binding.viewLayoutControls.isInvisible = true
                             binding.textFps.isGone = true
+                            binding.textRenderedIr.isGone = true
                             binding.textLoading.isGone = true
                             binding.progressLoading.isGone = true
                             binding.textLoadingDetail.isGone = true
@@ -1184,6 +1205,7 @@ class EmulatorActivity : AppCompatActivity() {
                         is EmulatorState.RomNotFoundError -> {
                             binding.viewLayoutControls.isInvisible = true
                             binding.textFps.isGone = true
+                            binding.textRenderedIr.isGone = true
                             binding.textLoading.isGone = true
                             binding.progressLoading.isGone = true
                             binding.textLoadingDetail.isGone = true
@@ -1227,6 +1249,7 @@ class EmulatorActivity : AppCompatActivity() {
     private fun showLoadingState() {
         binding.viewLayoutControls.isInvisible = true
         binding.textFps.isGone = true
+        binding.textRenderedIr.isGone = true
         binding.textLoading.isVisible = true
         if (bootStatus.value == null) {
             bootStatus.value = getString(R.string.info_loading)
@@ -1589,11 +1612,16 @@ class EmulatorActivity : AppCompatActivity() {
         if (launchArgs == null)
             return
 
-        if (viewModel.emulatorState.value.isRunning()) {
+        lifecycleScope.launch {
+            if (viewModel.isRunningRomLaunch(launchArgs)) {
+                setIntent(intent)
+                return@launch
+            }
+            if (!viewModel.emulatorState.value.isRunning()) return@launch
             viewModel.pauseEmulator(false)
 
             activeOverlays.addActiveOverlay(EmulatorOverlay.SWITCH_NEW_ROM_DIALOG)
-            AlertDialog.Builder(this)
+            AlertDialog.Builder(this@EmulatorActivity)
                     .setTitle(getString(R.string.title_emulator_running))
                     .setMessage(getString(R.string.message_stop_emulation))
                     .setPositiveButton(R.string.ok) { _, _ ->
@@ -1644,12 +1672,19 @@ class EmulatorActivity : AppCompatActivity() {
     }
 
     private fun setupFpsCounter() {
-        val fpsCounterPosition = viewModel.getFpsCounterPosition()
+        positionOverlayText(binding.textFps, viewModel.getFpsCounterPosition())
+    }
+
+    private fun setupRenderedIrOverlay() {
+        positionOverlayText(binding.textRenderedIr, viewModel.getRenderedIrPosition())
+    }
+
+    private fun positionOverlayText(view: android.widget.TextView, fpsCounterPosition: FpsCounterPosition) {
         if (fpsCounterPosition == FpsCounterPosition.HIDDEN) {
-            binding.textFps.isGone = true
+            view.isGone = true
         } else {
-            binding.textFps.isVisible = true
-            val newParams = binding.textFps.layoutParams as ConstraintLayout.LayoutParams
+            view.isVisible = true
+            val newParams = view.layoutParams as ConstraintLayout.LayoutParams
             when (fpsCounterPosition) {
                 FpsCounterPosition.TOP_LEFT -> {
                     newParams.topToTop = ConstraintLayout.LayoutParams.PARENT_ID
@@ -1679,7 +1714,7 @@ class EmulatorActivity : AppCompatActivity() {
                 }
                 FpsCounterPosition.HIDDEN -> { /* Do nothing here */ }
             }
-            binding.textFps.layoutParams = newParams
+            view.layoutParams = newParams
         }
     }
 
@@ -3877,12 +3912,12 @@ class EmulatorActivity : AppCompatActivity() {
         }
     }
 
-    private fun showRomLoadErrorDialog() {
+    private fun showRomLoadErrorDialog(reason: String?) {
         activeOverlays.addActiveOverlay(EmulatorOverlay.ROM_LOAD_ERROR_DIALOG)
         AlertDialog.Builder(this)
             .setCancelable(false)
             .setTitle(R.string.error_load_rom)
-            .setMessage(R.string.error_load_rom_message)
+            .setMessage(reason ?: getString(R.string.error_load_rom_message))
             .setPositiveButton(R.string.ok) { dialog, _ ->
                 dialog.dismiss()
                 finish()

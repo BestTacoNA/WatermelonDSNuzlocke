@@ -32,6 +32,7 @@ import me.magnum.melonds.domain.model.SortingOrder
 import me.magnum.melonds.domain.model.rom.Rom
 import me.magnum.melonds.domain.model.rom.RomDirectoryScanStatus
 import me.magnum.melonds.domain.model.rom.config.RomConfig
+import me.magnum.melonds.domain.model.rom.config.RomIconSource
 import me.magnum.melonds.domain.repositories.RetroAchievementsRepository
 import me.magnum.melonds.domain.repositories.RomsRepository
 import me.magnum.melonds.domain.repositories.SettingsRepository
@@ -66,6 +67,7 @@ class RomListViewModel @Inject constructor(
     private val boxArtSemaphore = kotlinx.coroutines.sync.Semaphore(4)
 
     fun requestBoxArt(rom: Rom) {
+        if (rom.config.iconSource != RomIconSource.DEFAULT) return
         val key = rom.uri.toString()
         if (_boxArtByUri.value.containsKey(key)) return
         synchronized(boxArtRequestsInFlight) {
@@ -92,18 +94,6 @@ class RomListViewModel @Inject constructor(
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
-    /**
-     * (rom.retroAchievementsHash → RA badge URL) for every game whose RA data is cached locally.
-     * Returns an empty map when the user has disabled RA covers in settings — that way every ROM
-     * falls back to its embedded cartridge icon without further plumbing.
-     */
-    val raCoverByHash: StateFlow<Map<String, String>> = combine(
-        retroAchievementsRepository.observeRomCoverIcons(),
-        settingsRepository.observeRaCoverEnabled(),
-    ) { covers, enabled ->
-        if (enabled) covers else emptyMap()
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
-
     private val _hasSearchDirectories = SubjectSharedFlow<Boolean>()
     val hasSearchDirectories: Flow<Boolean> = _hasSearchDirectories
 
@@ -118,6 +108,20 @@ class RomListViewModel @Inject constructor(
 
     private val romsWithParents = MutableStateFlow<List<RomWithParent>>(emptyList())
     private val installedDsiWareShortcuts = MutableStateFlow<List<RomWithParent>>(emptyList())
+
+    val raCoverByUri: StateFlow<Map<String, String>> = combine(
+        retroAchievementsRepository.observeRomCoverIcons(),
+        settingsRepository.observeRaCoverEnabled(),
+        romsWithParents,
+        installedDsiWareShortcuts,
+    ) { covers, enabled, roms, installed ->
+        (roms + installed).mapNotNull { entry ->
+            val rom = entry.rom
+            covers[rom.retroAchievementsHash]
+                ?.takeIf { rom.config.iconSource.usesRetroAchievements(enabled) }
+                ?.let { rom.uri.toString() to it }
+        }.toMap()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     private val rootDirectories = MutableStateFlow<List<RootDirectory>>(emptyList())
     private val navigationStack = MutableStateFlow<List<BrowserLocation>>(listOf(BrowserLocation.VirtualRoot))
     private val _browserState = MutableStateFlow(
