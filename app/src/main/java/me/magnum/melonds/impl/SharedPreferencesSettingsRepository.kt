@@ -1319,7 +1319,13 @@ class SharedPreferencesSettingsRepository(
             getExternalDisplayMode()
         }
     }
-
+    
+    override fun setExternalDisplayMode(mode: ExternalDisplayMode) {
+        preferences.edit {
+            putString(KEY_EXTERNAL_DISPLAY_MODE, mode.name.lowercase())
+        }
+    }
+    
     override fun isExternalDisplayKeepAspectRationEnabled(): Boolean {
         return preferences.getBoolean("external_display_keep_ratio", true)
     }
