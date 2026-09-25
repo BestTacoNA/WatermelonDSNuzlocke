@@ -90,6 +90,7 @@ interface SettingsRepository {
     fun observeRetroArchShaderParametersText(): Flow<String?>
     fun getExternalDisplayMode(): ExternalDisplayMode
     fun observeExternalDisplayMode(): Flow<ExternalDisplayMode>
+    fun setExternalDisplayMode(mode: ExternalDisplayMode)
 
     fun isExternalDisplayKeepAspectRationEnabled(): Boolean
     fun observeExternalDisplayKeepAspectRationEnabled(): Flow<Boolean>

@@ -329,6 +329,14 @@ class EmulatorActivity : AppCompatActivity() {
         override fun onSwapScreens() {
             swapScreen()
         }
+       
+        override fun onToggleDisplayMode() {
+            val nextMode = when (settingsRepository.getExternalDisplayMode()) {
+                ExternalDisplayMode.MIRROR -> ExternalDisplayMode.MELON_DUAL_DS
+                ExternalDisplayMode.MELON_DUAL_DS -> ExternalDisplayMode.MIRROR
+            }
+            settingsRepository.setExternalDisplayMode(nextMode)
+        }
 
         override fun onQuickSave() {
             viewModel.doQuickSave()
