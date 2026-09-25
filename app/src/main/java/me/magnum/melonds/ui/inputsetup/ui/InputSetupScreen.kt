@@ -488,6 +488,7 @@ private fun getInputName(input: Input): String? {
         Input.QUICK_SAVE -> R.string.input_quick_save
         Input.QUICK_LOAD -> R.string.input_quick_load
         Input.REWIND -> R.string.rewind
+        Input.TOGGLE_DISPLAY_MODE -> R.string.input_toggle_display_mode
         else -> return null
     }
 
