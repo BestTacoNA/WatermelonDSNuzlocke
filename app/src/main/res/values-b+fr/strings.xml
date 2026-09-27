@@ -339,6 +339,9 @@
         <item>x3</item>
         <item>x4</item>
         <item>x8</item>
+        <item>x12</item>
+        <item>x16</item>
+        <item>x20</item>
     </string-array>
 
     <string-array name="rom_icon_filtering_options">
