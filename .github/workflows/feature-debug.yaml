@@ -29,14 +29,16 @@ jobs:
         with:
           packages: 'platform-tools'  
 
-      - name: Build debug APK
+      - name: Build performance APK
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleGitHubProdDebug
+          ./gradlew :app:assembleGitHubProdPerformance
 
-      - name: Upload debug APK
+      - name: Upload performance APK
         uses: actions/upload-artifact@v4
         with:
-          name: watermelon-ds-feature-debug
-          path: app/build/outputs/apk/gitHubProd/debug/*.apk
+          name: watermelon-ds-performance-test
+          path: app/build/outputs/apk/gitHubProd/performance/*.apk
           if-no-files-found: error
+
+    
