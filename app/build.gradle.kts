@@ -75,6 +75,12 @@ android {
                 }
             }
         }
+
+        create("performance") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".perf"
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     flavorDimensions.add("version")
