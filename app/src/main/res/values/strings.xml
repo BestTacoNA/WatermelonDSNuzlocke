@@ -590,6 +590,7 @@
     <string name="input_swap_screens">Swap Screens</string>
     <string name="input_quick_save">Quick Save</string>
     <string name="input_quick_load">Quick Load</string>
+    <string name="input_toggle_display_mode">Toggle display mode</string>
 
     <string name="layouts">Layouts</string>
     <string name="layouts_summary">Manage custom layout configurations</string>
@@ -872,6 +873,9 @@
         <item>3x</item>
         <item>4x</item>
         <item>8x</item>
+        <item>12x</item>
+        <item>16x</item>
+        <item>20x</item>
     </string-array>
 
     <string-array name="frameskip_mode_options">

@@ -686,6 +686,9 @@
         <item>3倍</item>
         <item>4倍</item>
         <item>8倍</item>
+        <item>12倍</item>
+        <item>16倍</item>
+        <item>20倍</item>
     </string-array>
 
     <string-array name="frame_limit_speed_multiplier_options">
