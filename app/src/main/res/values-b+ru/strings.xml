@@ -475,6 +475,9 @@
         <item>3x</item>
         <item>4x</item>
         <item>8x</item>
+        <item>12x</item>
+        <item>16x</item>
+        <item>20x</item>
     </string-array>
 
     <string-array name="rom_icon_filtering_options">
